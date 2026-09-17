@@ -51,7 +51,7 @@ public class UpscalePipelineIntegrationTests : IDisposable
         await service.UpscalePartAsync(new UpscalePartRequest(
             src, 0, 2, Path.Combine(_workDir, "ups"), output,
             SourceHeight: 180, SourceFps: 24, TargetHeight: 720,
-            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath,
+            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath!,
             LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false),
             CancellationToken.None, progress);
 
@@ -84,7 +84,7 @@ public class UpscalePipelineIntegrationTests : IDisposable
         await service.UpscalePartAsync(new UpscalePartRequest(
             src, 0, 35, Path.Combine(_workDir, "ups35"), output,
             SourceHeight: 180, SourceFps: 24, TargetHeight: 720,
-            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath,
+            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath!,
             LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false,
             GpuIds: [0, 0]),
             CancellationToken.None, null);
@@ -119,7 +119,7 @@ public class UpscalePipelineIntegrationTests : IDisposable
         await service.UpscalePartAsync(new UpscalePartRequest(
             src, 0, 15, Path.Combine(_workDir, "ups_vfr"), output,
             SourceHeight: 180, SourceFps: 25, TargetHeight: 720,
-            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath,
+            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath!,
             LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false),
             CancellationToken.None, null);
 

@@ -26,7 +26,7 @@ public class EncodeSvtIntegrationTests
                 $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -y \"{src}\"");
 
             var outPath = Path.Combine(work, "parte_01 - teste.mkv");
-            var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath);
+            var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath!);
             var cfg = new CodecEncodeConfig { Code = "svt_av1", Preset = 6, UseConstantQuality = false, Multipass = true };
             var reports = new List<EncodeProgress>();
 

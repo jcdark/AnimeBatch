@@ -23,7 +23,7 @@ public enum NvencBoost
 /// svt_av1 / svt_av1_10bit (CPU, VBR single-pass) e nvenc_av1 / nvenc_av1_10bit (GPU).
 /// Áudio da primeira trilha vai em AAC 160k; legendas ficam pro remux (M3).
 /// </summary>
-public class EncodeService
+public class EncodeService : Queueing.IEncodeStage
 {
     /// <summary>Tempo sem NENHUMA linha de saída do ffmpeg antes de matar o processo por
     /// stall (evita worker preso a noite inteira num encode travado). Configurável via

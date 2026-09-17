@@ -18,7 +18,7 @@ public record EpisodeInfo(
     double Fps);
 
 /// <summary>Wrapper do ffprobe: duração, trilhas, legendas e capítulos de um episódio em uma chamada.</summary>
-public class ProbeService
+public class ProbeService : Queueing.IProbeStage
 {
     /// <summary>Timeout rígido de cada probe: ffprobe responde em segundos num arquivo
     /// saudável; acima disso (arquivo numa rede morta, disco com falha) é travamento.</summary>

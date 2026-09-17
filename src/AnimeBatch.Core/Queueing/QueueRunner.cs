@@ -3,7 +3,7 @@ using AnimeBatch.Core.Services;
 using System.Diagnostics;
 using System.Globalization;
 
-namespace AnimeBatch.App.Services;
+namespace AnimeBatch.Core.Queueing;
 
 /// <summary>Estatísticas do que está rodando agora (rodapé da aplicação).</summary>
 public record QueueStats(
@@ -14,16 +14,80 @@ public record QueueStats(
     TimeSpan? Remaining,
     string CurrentLabel);
 
+/// <summary>Estágio de encode, abstraído para o QueueRunner ser testável sem ffmpeg real
+/// (EncodeService implementa; os testes da fila usam fakes).</summary>
+public interface IEncodeStage
+{
+    Task EncodePartAsync(
+        string sourcePath, EncodeService.JobItemRef item, string outputPath, string passLogBase,
+        CodecEncodeConfig cfg, int kbps, CancellationToken ct,
+        IProgress<EncodeProgress>? progress, int? cudaGpu = null);
+}
+
+/// <summary>Estágio de remux final (mkvmerge), abstraído pelos mesmos motivos.</summary>
+public interface IMergeStage
+{
+    Task MergeAsync(
+        IReadOnlyList<(string PartPath, string Title, double StartSeconds, double EndSeconds, bool IsCritical)> parts,
+        string finalPath, string chaptersPath, CancellationToken ct);
+}
+
+/// <summary>Estágio de upscale nos dois motores (ncnn legado e ONNX/DirectML).</summary>
+public interface IUpscaleStage
+{
+    Task UpscalePartAsync(UpscalePartRequest req, CancellationToken ct, IProgress<EncodeProgress> progress);
+    Task UpscalePartOnnxAsync(UpscalePartRequest req, CancellationToken ct, IProgress<EncodeProgress>? progress);
+}
+
+/// <summary>Probe da origem (ffprobe), abstraído para a fila rodar sem processo real.</summary>
+public interface IProbeStage
+{
+    Task<EpisodeInfo> ProbeAsync(string videoPath, CancellationToken ct = default);
+}
+
 /// <summary>
-/// Executa a fila: pega o menor Order pendente, encoda cada parte com o codec do job,
+/// Dependências do QueueRunner. Tudo que toca banco, processo ou máquina entra aqui — o
+/// App monta com as implementações reais (AppServices); os testes da fila montam com
+/// SQLite em temp + fakes dos estágios. O runner não conhece UI nem estáticos.
+/// </summary>
+public sealed class QueueRunnerDeps
+{
+    public required JobRepository Jobs { get; init; }
+    public required SettingsRepository Settings { get; init; }
+    public required SeriesRepository Series { get; init; }
+    public required ConversionRepository Conversions { get; init; }
+    public required EncodeConfigRepository EncodeConfigs { get; init; }
+    public required ToolsLocator Tools { get; init; }
+    public required IProbeStage? Probe { get; init; }
+
+    /// <summary>Fábrica do estágio de encode (recebe o timeout de stall lido da setting
+    /// queue.stallMinutes a cada execução da fila).</summary>
+    public required Func<TimeSpan, IEncodeStage> Encode { get; init; }
+    public required Func<IMergeStage> Merge { get; init; }
+    public required Func<IUpscaleStage> Upscale { get; init; }
+
+    /// <summary>Raiz de saída (o App devolve a setting output.dir com fallback pra Vídeos).</summary>
+    public required Func<string> OutputDirectory { get; init; }
+
+    /// <summary>Log de exceções de processamento (o App grava em data\crash.log). Null = silencioso.</summary>
+    public Action<string, Exception>? LogCrash { get; init; }
+
+    /// <summary>Som de conclusão por episódio (o App toca; o Core não conhece áudio). Null = silêncio.</summary>
+    public Action? CompletionSound { get; init; }
+}
+
+/// <summary>
+/// Executa a fila: pega o menor Order pendente, encada cada parte com o codec do job,
 /// junta com mkvmerge (capítulos cumulativos; Critical não vira capítulo), grava o
-/// histórico e toca o som de conclusão por episódio. Um job por vez, em sequência.
+/// histórico e avisa a conclusão por episódio. Um job por vez, em sequência.
 ///
 /// Pausar: interrompe, job volta como Paused; Iniciar retoma (partes Done são puladas).
 /// Parar: interrompe, job volta como Pending (a parte em curso recomeça do zero).
 /// </summary>
-internal class QueueRunner
+public class QueueRunner
 {
+    private readonly QueueRunnerDeps _d;
+
     private CancellationTokenSource? _cts;
     private bool _pauseRequested;
     private bool _autoRemove;
@@ -32,6 +96,11 @@ internal class QueueRunner
     private double _jobDoneSeconds;
     private double _jobTotalSeconds;
     private string _currentLabel = "";
+
+    public QueueRunner(QueueRunnerDeps deps)
+    {
+        _d = deps;
+    }
 
     public bool IsRunning { get; private set; }
     public QueueStats? LastStats { get; private set; }
@@ -57,13 +126,13 @@ internal class QueueRunner
         _stopwatch.Restart();
 
         // Iniciar também é "tentar de novo" e "continuar": Error e Paused voltam pra fila.
-        await AppServices.Jobs.ResetErrorJobsAsync().ConfigureAwait(false);
-        await AppServices.Jobs.ResetPausedJobsAsync().ConfigureAwait(false);
+        await _d.Jobs.ResetErrorJobsAsync().ConfigureAwait(false);
+        await _d.Jobs.ResetPausedJobsAsync().ConfigureAwait(false);
         // Job Running órfão = app morto no meio do processamento (kill/crash) — volta pra fila
-        await AppServices.Jobs.ResetRunningJobsAsync().ConfigureAwait(false);
+        await _d.Jobs.ResetRunningJobsAsync().ConfigureAwait(false);
 
         // "Remover da fila ao ser convertido": lido uma vez por execução
-        _autoRemove = await AppServices.Settings
+        _autoRemove = await _d.Settings
             .GetAsync(SettingsRepository.QueueAutoRemove)
             .ConfigureAwait(false) == "true";
         // (GPUs de upscaling são lidas POR JOB — mudar a configuração vale já no próximo job,
@@ -112,12 +181,11 @@ internal class QueueRunner
     /// <summary>Timeout de stall do encode (setting "queue.stallMinutes", em minutos;
     /// vazio/inválido = default de 10). Clamp 1–120: valor absurdo não pode desligar a
     /// proteção nem matar um encode saudável.</summary>
-    private static TimeSpan ReadStallTimeout()
+    private async Task<TimeSpan> ReadStallTimeoutAsync()
     {
         try
         {
-            var raw = AppServices.Settings.GetAsync(SettingsRepository.StallMinutes)
-                .GetAwaiter().GetResult();
+            var raw = await _d.Settings.GetAsync(SettingsRepository.StallMinutes).ConfigureAwait(false);
             if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var minutes))
                 return TimeSpan.FromMinutes(Math.Clamp(minutes, 1, 120));
         }
@@ -130,21 +198,21 @@ internal class QueueRunner
 
     private async Task ProcessQueueAsync(CancellationToken ct)
     {
-        var tools = AppServices.Tools;
-        if (tools.FfmpegPath is null || tools.MkvMergePath is null || AppServices.Probe is null)
+        var tools = _d.Tools;
+        if (tools.FfmpegPath is null || tools.MkvMergePath is null || _d.Probe is null)
             throw new InvalidOperationException("Ferramentas essenciais ausentes (ffmpeg/mkvmerge/ffprobe).");
 
-        var encode = new EncodeService(tools.FfmpegPath, ReadStallTimeout());
-        var merge = new MergeService(tools.MkvMergePath);
-        var upscale = new UpscaleService(tools.FfmpegPath);
+        var encode = _d.Encode(await ReadStallTimeoutAsync().ConfigureAwait(false));
+        var merge = _d.Merge();
+        var upscale = _d.Upscale();
 
         while (!ct.IsCancellationRequested)
         {
-            var job = await AppServices.Jobs.PeekNextPendingAsync().ConfigureAwait(false);
+            var job = await _d.Jobs.PeekNextPendingAsync().ConfigureAwait(false);
             if (job is null)
                 break;
 
-            await AppServices.Jobs.SetStateAsync(job.Id, JobState.Running).ConfigureAwait(false);
+            await _d.Jobs.SetStateAsync(job.Id, JobState.Running).ConfigureAwait(false);
             _currentLabel = job.SeriesName ?? Path.GetFileNameWithoutExtension(job.SourcePath);
             EmitStats();
             Changed?.Invoke();
@@ -161,14 +229,14 @@ internal class QueueRunner
                 // Pausar deixa o job Paused (retoma depois); Parar devolve a Pending (parte recomeça)
                 var finalState = _pauseRequested ? JobState.Paused : JobState.Pending;
                 _pauseRequested = false;
-                await AppServices.Jobs.SetStateAsync(job.Id, finalState).ConfigureAwait(false);
+                await _d.Jobs.SetStateAsync(job.Id, finalState).ConfigureAwait(false);
                 Changed?.Invoke();
                 return;
             }
             catch (Exception ex)
             {
-                AppServices.LogCrash("QueueRunner", ex);
-                await AppServices.Jobs.SetStateAsync(job.Id, JobState.Error, ShortError(ex)).ConfigureAwait(false);
+                _d.LogCrash?.Invoke("QueueRunner", ex);
+                await _d.Jobs.SetStateAsync(job.Id, JobState.Error, ShortError(ex)).ConfigureAwait(false);
                 Changed?.Invoke();
                 // segue pro próximo job da fila
             }
@@ -209,11 +277,11 @@ internal class QueueRunner
     private async Task<IReadOnlyList<int>?> ResolveUpscaleGpusAsync(string? modelCode, string upscalerExe)
     {
         var cards = HardwareGpuService.Parse(
-            await AppServices.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false));
+            await _d.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false));
         if (cards.Count > 0)
         {
             var resolved = modelCode == OnnxUpscaleService.MotorCode
-                ? GpuSelector.ResolveOnnx(cards, AppServices.Tools.OnnxModelsDir)
+                ? GpuSelector.ResolveOnnx(cards, _d.Tools.OnnxModelsDir)
                 : await GpuSelector.ResolveNcnnAsync(cards, upscalerExe).ConfigureAwait(false);
             if (resolved is not null)
             {
@@ -223,12 +291,12 @@ internal class QueueRunner
             }
         }
 
-        return ParseGpuList(await AppServices.Settings.GetAsync(SettingsRepository.UpscaleGpus).ConfigureAwait(false));
+        return ParseGpuList(await _d.Settings.GetAsync(SettingsRepository.UpscaleGpus).ConfigureAwait(false));
     }
 
     /// <summary>Escolhe o motor pelo código do job: "onnx" (AnimeJaNai in-process) ou os ncnn legados.</summary>
     private static Task RunUpscaleStageAsync(
-        UpscaleService upscale, UpscalePartRequest req, CancellationToken ct, IProgress<EncodeProgress> progress) =>
+        IUpscaleStage upscale, UpscalePartRequest req, CancellationToken ct, IProgress<EncodeProgress> progress) =>
         req.ModelCode == OnnxUpscaleService.MotorCode
             ? upscale.UpscalePartOnnxAsync(req, ct, progress)
             : upscale.UpscalePartAsync(req, ct, progress);
@@ -248,7 +316,7 @@ internal class QueueRunner
         await _dbGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await AppServices.Jobs.SetItemStateAsync(itemId, state, outputPath).ConfigureAwait(false);
+            await _d.Jobs.SetItemStateAsync(itemId, state, outputPath).ConfigureAwait(false);
         }
         finally
         {
@@ -256,22 +324,22 @@ internal class QueueRunner
         }
     }
 
-    private async Task ProcessJobAsync(Job job, EncodeService encode, MergeService merge, UpscaleService upscale, CancellationToken ct)
+    private async Task ProcessJobAsync(Job job, IEncodeStage encode, IMergeStage merge, IUpscaleStage upscale, CancellationToken ct)
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
-        var outputRoot = AppServices.GetOutputDirectory();
+        var outputRoot = _d.OutputDirectory();
         var workDir = Path.Combine(outputRoot, "AnimeBatch", SafeFolder(baseName));
         Directory.CreateDirectory(workDir);
 
         // Dimensões/fps da origem guiam o plano de upscale (fator do modelo, escala final)
-        var info = await AppServices.Probe!.ProbeAsync(job.SourcePath, ct).ConfigureAwait(false);
+        var info = await _d.Probe!.ProbeAsync(job.SourcePath, ct).ConfigureAwait(false);
         var upscaledIntermediates = job.UpscaleMode == UpscaleMode.WithEncode;
 
         var items = job.Items.OrderBy(i => i.Order).ToList();
         _jobTotalSeconds = items.Sum(i => Math.Max(0.001, i.EndSeconds - i.StartSeconds));
         _jobDoneSeconds = 0;
         var codec = job.VideoCodec ?? "nvenc_av1_10bit";
-        var cfg = await AppServices.EncodeConfigs.GetAsync(codec).ConfigureAwait(false);
+        var cfg = await _d.EncodeConfigs.GetAsync(codec).ConfigureAwait(false);
         var isNvenc = codec.StartsWith("nvenc", StringComparison.Ordinal);
         var doneParts = new List<(JobItem Item, string Path)>();
 
@@ -298,7 +366,7 @@ internal class QueueRunner
             // ---- Estágio de upscale (WithEncode): frames ampliados → intermediário lossless ----
             if (upscaledIntermediates && !File.Exists(intermediatePath))
             {
-                await AppServices.Jobs.SetItemStateAsync(item.Id, JobItemState.Upcaling).ConfigureAwait(false);
+                await _d.Jobs.SetItemStateAsync(item.Id, JobItemState.Upcaling).ConfigureAwait(false);
                 _currentLabel = $"{job.SeriesName ?? baseName} - {item.Order}/{items.Count} - {item.Title} · upscaling";
                 EmitStats();
 
@@ -314,18 +382,18 @@ internal class QueueRunner
                         LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false,
                         GpuIds: await ResolveUpscaleGpusAsync(job.UpscaleModel, UpscalerExe(job.UpscaleModel)).ConfigureAwait(false),
                         SourceWidth: info.Width,
-                        OnnxModelsDir: AppServices.Tools.OnnxModelsDir);
+                        OnnxModelsDir: _d.Tools.OnnxModelsDir);
                     await RunUpscaleStageAsync(upscale, req, ct, upsProgress).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    await AppServices.Jobs.SetItemStateAsync(item.Id, JobItemState.Pending).ConfigureAwait(false);
+                    await _d.Jobs.SetItemStateAsync(item.Id, JobItemState.Pending).ConfigureAwait(false);
                     throw;
                 }
                 catch (Exception ex)
                 {
-                    AppServices.LogCrash("UpscaleService", ex);
-                    await AppServices.Jobs.SetItemStateAsync(item.Id, JobItemState.Error).ConfigureAwait(false);
+                    _d.LogCrash?.Invoke("UpscaleService", ex);
+                    await _d.Jobs.SetItemStateAsync(item.Id, JobItemState.Error).ConfigureAwait(false);
                     throw; // marca o job como Error no chamador e segue a fila
                 }
             }
@@ -348,7 +416,7 @@ internal class QueueRunner
             // NVENC/nvidia-smi. Sem configuração (ou SVT no CPU): sequencial como antes;
             // configurado com todas as placas em 0 = erro claro (decisão final do usuário).
             var cardsJson = isNvenc
-                ? await AppServices.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false)
+                ? await _d.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false)
                 : null;
             var pool = isNvenc ? NvencGpuProbe.ResolveWorkers(cardsJson) : null;
             if (pool is { Count: 0 })
@@ -374,10 +442,10 @@ internal class QueueRunner
         await merge.MergeAsync(mergeParts, finalPath, chaptersPath, ct).ConfigureAwait(false);
 
         // Histórico (tela de Séries → Arquivos Convertidos)
-        var series = await AppServices.Series
+        var series = await _d.Series
             .FindByNormalizedNameAsync(ChapterService.CleanSeriesName(baseName))
             .ConfigureAwait(false);
-        await AppServices.Conversions.AddAsync(new ConversionRecord
+        await _d.Conversions.AddAsync(new ConversionRecord
         {
             SeriesId = series?.Id,
             SeriesName = job.SeriesName ?? series?.Name ?? "",
@@ -393,7 +461,7 @@ internal class QueueRunner
     }
 
     private async Task EncodePendingSequentialAsync(
-        Job job, EncodeService encode, CodecEncodeConfig cfg,
+        Job job, IEncodeStage encode, CodecEncodeConfig cfg,
         IReadOnlyList<PendingEncode> pending, CancellationToken ct)
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
@@ -424,7 +492,7 @@ internal class QueueRunner
             }
             catch (Exception ex)
             {
-                AppServices.LogCrash("EncodeService", ex);
+                _d.LogCrash?.Invoke("EncodeService", ex);
                 await SetItemGatedAsync(e.Item.Id, JobItemState.Error).ConfigureAwait(false);
                 throw; // marca o job como Error no chamador e segue a fila
             }
@@ -444,7 +512,7 @@ internal class QueueRunner
     /// Uma parte que falha para de pegar novas mas deixa as em voo terminarem.
     /// </summary>
     private async Task EncodePendingParallelAsync(
-        Job job, EncodeService encode, CodecEncodeConfig cfg,
+        Job job, IEncodeStage encode, CodecEncodeConfig cfg,
         IReadOnlyList<PendingEncode> pending, IReadOnlyList<int> pool, CancellationToken ct)
     {
         var workerCount = Math.Min(pool.Count, pending.Count);
@@ -493,7 +561,7 @@ internal class QueueRunner
                     }
                     catch (Exception ex)
                     {
-                        AppServices.LogCrash("EncodeService", ex);
+                        _d.LogCrash?.Invoke("EncodeService", ex);
                         await SetItemGatedAsync(e.Item.Id, JobItemState.Error).ConfigureAwait(false);
                         stopPickup = true; // esta parte falhou — não pegue outras
                         throw;
@@ -615,14 +683,14 @@ internal class QueueRunner
     /// capítulos e sem encode AV1 — sai um MKV x264 CRF 14 com áudio, legendas, anexos e
     /// capítulos originais preservados.
     /// </summary>
-    private async Task ProcessOnlyUpscaleAsync(Job job, UpscaleService upscale, CancellationToken ct)
+    private async Task ProcessOnlyUpscaleAsync(Job job, IUpscaleStage upscale, CancellationToken ct)
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
-        var outputRoot = AppServices.GetOutputDirectory();
+        var outputRoot = _d.OutputDirectory();
         var workDir = Path.Combine(outputRoot, "AnimeBatch", SafeFolder(baseName));
         Directory.CreateDirectory(workDir);
 
-        var info = await AppServices.Probe!.ProbeAsync(job.SourcePath, ct).ConfigureAwait(false);
+        var info = await _d.Probe!.ProbeAsync(job.SourcePath, ct).ConfigureAwait(false);
         var duration = Math.Max(0.001, info.DurationSeconds);
         var finalPath = Path.Combine(outputRoot, $"{baseName} (upscaling).mkv");
 
@@ -645,7 +713,7 @@ internal class QueueRunner
                     LosslessIntermediate: false, CopyAudio: true, KeepChapters: true, CopySubtitles: true,
                     GpuIds: await ResolveUpscaleGpusAsync(job.UpscaleModel, UpscalerExe(job.UpscaleModel)).ConfigureAwait(false),
                     SourceWidth: info.Width,
-                    OnnxModelsDir: AppServices.Tools.OnnxModelsDir);
+                    OnnxModelsDir: _d.Tools.OnnxModelsDir);
                 await RunUpscaleStageAsync(upscale, req, ct, progress).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -656,15 +724,15 @@ internal class QueueRunner
         }
 
         foreach (var item in job.Items)
-            await AppServices.Jobs.SetItemStateAsync(item.Id, JobItemState.Done, finalPath).ConfigureAwait(false);
+            await _d.Jobs.SetItemStateAsync(item.Id, JobItemState.Done, finalPath).ConfigureAwait(false);
 
         _jobDoneSeconds += duration;
         _sessionConvertedSeconds += duration;
 
-        var series = await AppServices.Series
+        var series = await _d.Series
             .FindByNormalizedNameAsync(ChapterService.CleanSeriesName(baseName))
             .ConfigureAwait(false);
-        await AppServices.Conversions.AddAsync(new ConversionRecord
+        await _d.Conversions.AddAsync(new ConversionRecord
         {
             SeriesId = series?.Id,
             SeriesName = job.SeriesName ?? series?.Name ?? "",
@@ -682,12 +750,12 @@ internal class QueueRunner
     /// <summary>Conclusão compartilhada: estado Done, som e auto-remoção da fila.</summary>
     private async Task FinishJobAsync(Job job)
     {
-        await AppServices.Jobs.SetStateAsync(job.Id, JobState.Done).ConfigureAwait(false);
-        AppServices.PlayCompletionSound();
+        await _d.Jobs.SetStateAsync(job.Id, JobState.Done).ConfigureAwait(false);
+        _d.CompletionSound?.Invoke();
 
         // Checkbox "remover da fila ao ser convertido": job concluído sai da lista
         if (_autoRemove)
-            await AppServices.Jobs.DeleteAsync(job.Id).ConfigureAwait(false);
+            await _d.Jobs.DeleteAsync(job.Id).ConfigureAwait(false);
     }
 
     /// <summary>Publica fps/velocidade/percentual de um estágio do job em execução.</summary>
@@ -710,10 +778,10 @@ internal class QueueRunner
     }
 
     /// <summary>Executável ncnn-vulkan do modelo do job; vazio se a ferramenta não estiver instalada.</summary>
-    private static string UpscalerExe(string? modelCode) =>
+    private string UpscalerExe(string? modelCode) =>
         modelCode == "realesrgan"
-            ? AppServices.Tools.RealesrganPath ?? ""
-            : AppServices.Tools.RealCuganPath ?? "";
+            ? _d.Tools.RealesrganPath ?? ""
+            : _d.Tools.RealCuganPath ?? "";
 
     private static void TryDelete(string path)
     {

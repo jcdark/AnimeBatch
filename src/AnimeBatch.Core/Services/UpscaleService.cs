@@ -47,7 +47,7 @@ public record UpscalePartRequest(
 /// No modo WithEncode o produto é um intermediário que segue pro EncodeService normal;
 /// no Only é o arquivo final.
 /// </summary>
-public class UpscaleService
+public class UpscaleService : Queueing.IUpscaleStage
 {
     /// <summary>Duração de cada chunk (segundos de vídeo). Pico de disco ≈ 2 chunks de PNG.</summary>
     public const int ChunkSeconds = 30;

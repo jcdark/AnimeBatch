@@ -26,7 +26,7 @@ public class EncodeNvencIntegrationTests
                 $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -y \"{src}\"");
 
             var outPath = Path.Combine(work, "parte_01 - teste.mkv");
-            var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath);
+            var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath!);
             var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Preset = 7, Tune = "hq", QualityBoost = true };
             await encode.EncodePartAsync(
                 src, new EncodeService.JobItemRef(0, 1.0, 500), outPath,

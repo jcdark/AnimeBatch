@@ -1,4 +1,5 @@
 using AnimeBatch.Core.Data;
+using AnimeBatch.Core.Queueing;
 using AnimeBatch.Core.Services;
 
 namespace AnimeBatch.App.Services;
@@ -111,7 +112,24 @@ internal static class AppServices
         Jobs = new JobRepository(DbFactory);
         Conversions = new ConversionRepository(DbFactory);
         EncodeConfigs = new EncodeConfigRepository(Settings);
-        Queue = new QueueRunner();
+        // QueueRunner (Core.Queueing) com as implementações reais injetadas: os caminhos só
+        // são lidos dentro do runner DEPOIS da validação de ferramentas essenciais.
+        Queue = new QueueRunner(new QueueRunnerDeps
+        {
+            Jobs = Jobs,
+            Settings = Settings,
+            Series = Series,
+            Conversions = Conversions,
+            EncodeConfigs = EncodeConfigs,
+            Tools = Tools,
+            Probe = Probe,
+            Encode = stall => new EncodeService(Tools.FfmpegPath!, stall),
+            Merge = () => new MergeService(Tools.MkvMergePath!),
+            Upscale = () => new UpscaleService(Tools.FfmpegPath!),
+            OutputDirectory = GetOutputDirectory,
+            LogCrash = LogCrash,
+            CompletionSound = PlayCompletionSound,
+        });
 
         Localizer = new Localization();
         Localizer.Load(Path.Combine(AppContext.BaseDirectory, "i18n"));

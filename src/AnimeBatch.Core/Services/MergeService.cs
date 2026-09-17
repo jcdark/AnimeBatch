@@ -9,7 +9,7 @@ namespace AnimeBatch.Core.Services;
 /// cumulativos (formato OGM simples). Capítulos da classe Critical participam do vídeo
 /// mas NÃO viram capítulos no arquivo final.
 /// </summary>
-public class MergeService
+public class MergeService : Queueing.IMergeStage
 {
     private readonly string _mkvmerge;
 
