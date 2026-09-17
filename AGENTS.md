@@ -15,11 +15,13 @@ App Windows (WinUI 3, .NET) de conversão/upscaling/remux de anime em lote. Subs
 ## Build / teste
 
 ```
-dotnet build AnimeBatch.slnx -p:Platform=x64
-dotnet test  AnimeBatch.slnx -p:Platform=x64
+dotnet build AnimeBatch.slnx
+dotnet test  AnimeBatch.slnx
 ```
 
-- Sempre `-p:Platform=x64` (Any CPU quebra os projetos nativos/DirectML).
+- Na SOLUÇÃO, NÃO passe `-p:Platform=x64` — o slnx não declara config de solução x64 e o build morre com MSB4126. O App só tem a plataforma x64 (sempre compila x64) e Core/Tests são AnyCPU rodando em processo x64.
+- `-p:Platform=x64` é válido no nível de PROJETO (é o que `scripts/make-release.ps1` usa no publish do App).
+- Testes de integração pulam sozinhos se `tools\` não estiver populado (script `setup-tools.ps1`).
 - Release: `scripts/make-release.ps1` e depois copiar `data\animebatch.db` da versão anterior.
 - NÃO renomear o exe pós-publish (sidecars .deps/.runtimeconfig casam com o nome; usar `AssemblyName=AnimeBatchV$(Version)`).
 

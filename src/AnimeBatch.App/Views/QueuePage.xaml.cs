@@ -19,12 +19,12 @@ public partial class JobRowViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private int order;
+    public partial int Order { get; set; }
 
     /// <summary>Percentual vivo do job em execução; null nos demais estados.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StateLabel))]
-    private double? progressPercent;
+    public partial double? ProgressPercent { get; set; }
 
     public int Id => Job.Id;
     public string SourceFileName => System.IO.Path.GetFileName(Job.SourcePath);

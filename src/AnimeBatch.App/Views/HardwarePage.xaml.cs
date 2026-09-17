@@ -22,13 +22,13 @@ public partial class GpuRowViewModel : ObservableObject
 
     /// <summary>O índice do combo É o número de workers (0 = placa excluída; TwoWay no combo).</summary>
     [ObservableProperty]
-    private int workersIndex;
+    public partial int WorkersIndex { get; set; }
 
     public GpuRowViewModel(HardwareGpuCard card, IReadOnlyList<string> workerOptions)
     {
         Card = card;
         WorkerOptions = workerOptions;
-        workersIndex = Math.Clamp(card.Workers, 0, workerOptions.Count - 1);
+        WorkersIndex = Math.Clamp(card.Workers, 0, workerOptions.Count - 1);
     }
 
     public HardwareGpuCard ToCard() => Card with { Workers = WorkersIndex };

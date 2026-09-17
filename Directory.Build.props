@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- Propriedades comuns a todos os projetos da solução. IMPORTANTE: este arquivo é
+       importado ANTES dos csproj, então qualquer projeto pode sobrescrever o que precisa. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <!-- Regras de estilo do .editorconfig viram erros de build só quando marcadas
+         warning+; as que usamos estão como suggestion, então isso não quebra nada. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>
