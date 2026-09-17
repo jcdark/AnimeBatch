@@ -20,6 +20,10 @@ public record EpisodeInfo(
 /// <summary>Wrapper do ffprobe: duração, trilhas, legendas e capítulos de um episódio em uma chamada.</summary>
 public class ProbeService
 {
+    /// <summary>Timeout rígido de cada probe: ffprobe responde em segundos num arquivo
+    /// saudável; acima disso (arquivo numa rede morta, disco com falha) é travamento.</summary>
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(60);
+
     private readonly string _ffprobePath;
 
     public ProbeService(string ffprobePath)
@@ -131,28 +135,28 @@ public class ProbeService
 
     private async Task<string> RunCaptureOutputAsync(string[] args, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(_ffprobePath)
+        using var proc = ProcessRunner.Start(_ffprobePath, args,
+            configure: psi => psi.StandardOutputEncoding = System.Text.Encoding.UTF8);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(ProbeTimeout);
+        try
         {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8,
-        };
-        foreach (var a in args)
-            psi.ArgumentList.Add(a);
+            var stdout = await proc.StandardOutput.ReadToEndAsync(timeoutCts.Token).ConfigureAwait(false);
+            var stderr = await proc.StandardError.ReadToEndAsync(timeoutCts.Token).ConfigureAwait(false);
+            await proc.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
 
-        using var proc = new Process { StartInfo = psi };
-        proc.Start();
+            if (proc.ExitCode != 0)
+                throw new InvalidOperationException($"ffprobe falhou (código {proc.ExitCode}): {stderr}");
 
-        var stdout = await proc.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
-        var stderr = await proc.StandardError.ReadToEndAsync(ct).ConfigureAwait(false);
-        await proc.WaitForExitAsync(ct).ConfigureAwait(false);
-
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"ffprobe falhou (código {proc.ExitCode}): {stderr}");
-
-        return stdout;
+            return stdout;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // estourou o timeout (o token do chamador segue vivo) — mata o ffprobe travado
+            ProcessRunner.TryKill(proc);
+            throw new InvalidOperationException(
+                $"ffprobe não respondeu em {ProbeTimeout.TotalSeconds:0}s — provável arquivo/disco travado.");
+        }
     }
 }

@@ -37,6 +37,26 @@ internal static class AppServices
         }
     }
 
+    /// <summary>Pastas extras de busca de binários ("tools.extraDirs", separadas por ';' ou
+    /// quebra de linha). Só entram as que existem no disco; setting ausente = lista vazia.</summary>
+    private static string[] ReadToolsExtraDirs(SettingsRepository settings)
+    {
+        try
+        {
+            var raw = settings.GetAsync(SettingsRepository.ToolsExtraDirs).GetAwaiter().GetResult();
+            if (string.IsNullOrWhiteSpace(raw))
+                return [];
+            return raw.Split([';', '\n', ','],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(Directory.Exists)
+                .ToArray();
+        }
+        catch
+        {
+            return []; // busca de binários é best-effort — nunca derruba o boot
+        }
+    }
+
     /// <summary>Serviço TMDB pronto pra uso, ou null se a chave não estiver configurada.</summary>
     public static TmdbService? GetTmdb() =>
         Settings.GetAsync(SettingsRepository.TmdbApiKey).GetAwaiter().GetResult() is { Length: > 0 } key
@@ -80,7 +100,9 @@ internal static class AppServices
         DbFactory = () => new AnimeBatchDbContext(AnimeBatchDbContext.DefaultDbPath());
         DbInitializer.Initialize(DbFactory);
 
-        Tools = new ToolsLocator();
+        // Settings vem ANTES do ToolsLocator: as pastas extras de busca de binários são setting.
+        Settings = new SettingsRepository(DbFactory);
+        Tools = new ToolsLocator(extraDirs: ReadToolsExtraDirs(Settings));
         if (Tools.FfprobePath is not null)
             Probe = new ProbeService(Tools.FfprobePath);
 
@@ -88,7 +110,6 @@ internal static class AppServices
         Keywords = new KeywordRepository(DbFactory);
         Jobs = new JobRepository(DbFactory);
         Conversions = new ConversionRepository(DbFactory);
-        Settings = new SettingsRepository(DbFactory);
         EncodeConfigs = new EncodeConfigRepository(Settings);
         Queue = new QueueRunner();
 

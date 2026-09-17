@@ -792,10 +792,10 @@ public class UpscaleService
 
             if (extract.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"ffmpeg (extração ONNX) falhou (código {extract.ExitCode}): {Truncate(await stderrExtract.ConfigureAwait(false), 500)}");
+                    $"ffmpeg (extração ONNX) falhou (código {extract.ExitCode}): {ProcessRunner.Truncate(await stderrExtract.ConfigureAwait(false), 500)}");
             if (assemble.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"ffmpeg (remontar ONNX) falhou (código {assemble.ExitCode}): {Truncate(await stderrAssemble.ConfigureAwait(false), 500)}");
+                    $"ffmpeg (remontar ONNX) falhou (código {assemble.ExitCode}): {ProcessRunner.Truncate(await stderrAssemble.ConfigureAwait(false), 500)}");
             if (frames == 0)
                 throw new InvalidOperationException("Extração ONNX não produziu nenhum frame no chunk.");
         }
@@ -803,14 +803,14 @@ public class UpscaleService
         {
             // IOException de pipe quebrado = o ffmpeg do outro lado morreu — traz o stderr dele
             var tail = "";
-            try { tail = Truncate(await stderrAssemble.ConfigureAwait(false), 500); } catch { }
+            try { tail = ProcessRunner.Truncate(await stderrAssemble.ConfigureAwait(false), 500); } catch { }
             throw new InvalidOperationException(
                 $"Falha no chunk ONNX (frame pipe): {ex.Message} | ffmpeg: {tail}", ex);
         }
         finally
         {
-            TryKill(extract);
-            TryKill(assemble);
+            ProcessRunner.TryKill(extract);
+            ProcessRunner.TryKill(assemble);
         }
     }
 
@@ -828,22 +828,8 @@ public class UpscaleService
         return true;
     }
 
-    private static Process StartProcess(string exe, string[] args, bool redirectStdin = false)
-    {
-        var psi = new ProcessStartInfo(exe)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = redirectStdin,
-            CreateNoWindow = true,
-        };
-        foreach (var a in args)
-            psi.ArgumentList.Add(a);
-        var proc = new Process { StartInfo = psi };
-        proc.Start();
-        return proc;
-    }
+    private static Process StartProcess(string exe, string[] args, bool redirectStdin = false) =>
+        ProcessRunner.Start(exe, args, redirectStdin);
 
     /// <summary>Roda o ncnn-vulkan num chunk; onFrames recebe frames prontos a cada poll
     /// (é por onde o progresso do upscale flui — o ncnn não emite progresso na stdout).</summary>
@@ -889,13 +875,13 @@ public class UpscaleService
         }
         catch (OperationCanceledException)
         {
-            TryKill(proc);
+            ProcessRunner.TryKill(proc);
             throw;
         }
 
         var stderr = await stderrTask.ConfigureAwait(false);
         if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"Upscaling falhou (código {proc.ExitCode}): {Truncate(stderr, 800)}");
+            throw new InvalidOperationException($"Upscaling falhou (código {proc.ExitCode}): {ProcessRunner.Truncate(stderr, 800)}");
 
         var finalCount = CountPngs(outDir);
         if (finalCount < expectedFrames)
@@ -932,14 +918,14 @@ public class UpscaleService
         }
         catch (OperationCanceledException)
         {
-            TryKill(proc);
+            ProcessRunner.TryKill(proc);
             throw;
         }
 
         await pumpTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
         if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg falhou (código {proc.ExitCode}): {Truncate(stderr, 800)}");
+            throw new InvalidOperationException($"ffmpeg falhou (código {proc.ExitCode}): {ProcessRunner.Truncate(stderr, 800)}");
     }
 
     private static async Task PumpAsync(Process proc, Action<string> onLine)
@@ -960,20 +946,4 @@ public class UpscaleService
             // best-effort: frames órfãos não devem derrubar a fila
         }
     }
-
-    private static void TryKill(Process proc)
-    {
-        try
-        {
-            if (!proc.HasExited)
-                proc.Kill(entireProcessTree: true);
-        }
-        catch
-        {
-            // processo já morreu — nada a fazer
-        }
-    }
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
 }

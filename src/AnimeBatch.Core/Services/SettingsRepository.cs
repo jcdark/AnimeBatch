@@ -13,6 +13,11 @@ public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
     public const string SourceDirectory = "source.dir";
     public const string QueueAutoRemove = "queue.autoRemove";
     public const string UpscaleGpus = "upscale.gpus";
+    /// <summary>Minutos sem saída do ffmpeg antes de matar o processo por stall
+    /// (número; vazio/inválido = 10). Lido pelo QueueRunner ao montar o EncodeService.</summary>
+    public const string StallMinutes = "queue.stallMinutes";
+    /// <summary>Pastas extras de busca de binários, separadas por ';' (ToolsLocator).</summary>
+    public const string ToolsExtraDirs = "tools.extraDirs";
 
     private readonly Func<AnimeBatchDbContext> _factory = contextFactory;
 

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.ML.OnnxRuntime;
 
 namespace AnimeBatch.Core.Services;
@@ -86,7 +85,7 @@ public static class DmlDeviceCalibration
 
     private static IReadOnlyList<GpuMemory> QueryGpuMemory(string smiExe)
     {
-        var (stdout, ok) = Run(smiExe,
+        var (stdout, ok) = ProcessRunner.Capture(smiExe,
             "--query-gpu=index,name,memory.used --format=csv,noheader,nounits", 10_000);
         if (!ok)
             return [];
@@ -129,33 +128,5 @@ public static class DmlDeviceCalibration
             }
         }
         return null;
-    }
-
-    private static (string Stdout, bool Ok) Run(string exe, string args, int timeoutMs)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo(exe)
-            {
-                Arguments = args,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            using var proc = Process.Start(psi)!;
-            var stdout = proc.StandardOutput.ReadToEnd();
-            proc.StandardError.ReadToEnd();
-            if (!proc.WaitForExit(timeoutMs))
-            {
-                try { proc.Kill(entireProcessTree: true); } catch { }
-                return ("", false);
-            }
-            return (stdout, proc.ExitCode == 0);
-        }
-        catch
-        {
-            return ("", false);
-        }
     }
 }

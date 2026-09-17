@@ -5,7 +5,9 @@ namespace AnimeBatch.Core.Services;
 /// ferramentas de upscale) sem depender de PATH. Ordem de busca:
 /// 1. Pasta tools\ do aplicativo (deploy final, tudo embutido);
 /// 2. Locais de instalação conhecidos (fallback de desenvolvimento);
-/// 3. Variável PATH do sistema.
+/// 3. Pastas extras da setting "tools.extraDirs" (cada instalação aponta os seus);
+/// 4. Legado: ffmpeg-* na raiz de D:\ (máquina de desenvolvimento do dono);
+/// 5. Variável PATH do sistema.
 /// </summary>
 public class ToolsLocator
 {
@@ -21,10 +23,12 @@ public class ToolsLocator
     };
 
     private readonly string _toolsDir;
+    private readonly IReadOnlyList<string> _extraDirs;
 
-    public ToolsLocator(string? toolsDir = null)
+    public ToolsLocator(string? toolsDir = null, IReadOnlyList<string>? extraDirs = null)
     {
         _toolsDir = toolsDir ?? FindToolsDir() ?? Path.Combine(AppContext.BaseDirectory, "tools");
+        _extraDirs = extraDirs ?? [];
 
         FfmpegPath = Locate("ffmpeg.exe");
         FfprobePath = Locate("ffprobe.exe");
@@ -112,8 +116,27 @@ public class ToolsLocator
             }
         }
 
-        // ffmpeg/ffprobe: também aceita a pasta bin\ de uma extração BtbN conhecida
+        // 3) Pastas extras configuradas (setting "tools.extraDirs") — direto na pasta e,
+        //     para ffmpeg/ffprobe, na subpasta bin\ de uma extração comum
+        foreach (var dir in _extraDirs)
+        {
+            var p = Path.Combine(dir, exeName);
+            if (File.Exists(p))
+                return p;
+        }
         if (exeName is "ffmpeg.exe" or "ffprobe.exe")
+        {
+            foreach (var dir in _extraDirs)
+            {
+                var p = Path.Combine(dir, "bin", exeName);
+                if (File.Exists(p))
+                    return p;
+            }
+        }
+
+        // 4) Legado da máquina do dono: extração BtbN solta na raiz de D:\ (guardado com
+        //     Directory.Exists — sem o drive, GetDirectories lança e derrubaria o ctor)
+        if (exeName is "ffmpeg.exe" or "ffprobe.exe" && Directory.Exists(@"D:\"))
         {
             foreach (var dir in Directory.GetDirectories(@"D:\", "ffmpeg-*", SearchOption.TopDirectoryOnly))
             {

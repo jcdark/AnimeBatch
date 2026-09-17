@@ -25,11 +25,20 @@ public enum NvencBoost
 /// </summary>
 public class EncodeService
 {
-    private readonly string _ffmpeg;
+    /// <summary>Tempo sem NENHUMA linha de saída do ffmpeg antes de matar o processo por
+    /// stall (evita worker preso a noite inteira num encode travado). Configurável via
+    /// setting "queue.stallMinutes"; o default cobre encodes lentos sem falsos positivos.</summary>
+    public static readonly TimeSpan DefaultStallTimeout = TimeSpan.FromMinutes(10);
 
-    public EncodeService(string ffmpegPath)
+    private const int StallPollIntervalMs = 15_000;
+
+    private readonly string _ffmpeg;
+    private readonly TimeSpan _stallTimeout;
+
+    public EncodeService(string ffmpegPath, TimeSpan? stallTimeout = null)
     {
         _ffmpeg = ffmpegPath;
+        _stallTimeout = stallTimeout ?? DefaultStallTimeout;
     }
 
     /// <summary>
@@ -38,17 +47,15 @@ public class EncodeService
     /// reforço de qualidade (NvencBoost) e -gpu para dirigir o encode a uma placa.
     /// SVT: preset 1–13, tune (svtav1-params), CRF ou VBR, 2-pass quando Multipass+bitrate,
     /// perfil/nível (numéricos). SVT não suporta VBV (maxrate/bufsize).
+    /// Devolve args DISCRETOS (um token por item) — nunca separe uma string por espaço:
+    /// qualquer valor que ganhe um espaço um dia quebraria silenciosamente o comando.
     /// </summary>
-    public static (string Args, bool TwoPass) BuildVideoArgs(
+    public static (IReadOnlyList<string> Args, bool TwoPass) BuildVideoArgs(
         CodecEncodeConfig cfg, int kbps, int? cudaGpu = null, NvencBoost boost = NvencBoost.Off)
     {
         var isNvenc = cfg.Code.StartsWith("nvenc", StringComparison.Ordinal);
         var is10Bit = cfg.Code.EndsWith("10bit", StringComparison.Ordinal);
         var pixFmt = is10Bit ? (isNvenc ? "p010le" : "yuv420p10le") : (isNvenc ? "yuv420p" : "yuv420p");
-
-        var preset = isNvenc
-            ? $"-preset p{Math.Clamp(cfg.Preset, 1, 7)}"
-            : $"-preset {Math.Clamp(cfg.Preset, 1, 13)}";
 
         // Reforço de qualidade: FastConversion vence (o objetivo dele é velocidade).
         // AqOnly roda em qualquer NVENC; Full acrescenta a análise estendida (UHQ/filtro
@@ -58,56 +65,73 @@ public class EncodeService
         // No reforço cheio, UHQ substitui hq/none; tune escolhido pelo usuário (ll/ull/lossless) é respeitado
         var tuneOverridden = effectiveBoost == NvencBoost.Full && cfg.Tune is "hq" or "none";
 
-        var tune = cfg.Tune != "none" && !tuneOverridden
-            ? (isNvenc ? $"-tune {cfg.Tune}" : $"-svtav1-params tune={cfg.Tune}")
-            : "";
+        var args = new List<string> { "-c:v", isNvenc ? "av1_nvenc" : "libsvtav1" };
 
-        string rate;
+        if (isNvenc)
+            args.AddRange(["-preset", $"p{Math.Clamp(cfg.Preset, 1, 7)}"]);
+        else
+            args.AddRange(["-preset", $"{Math.Clamp(cfg.Preset, 1, 13)}"]);
+
+        if (cfg.Tune != "none" && !tuneOverridden)
+        {
+            if (isNvenc)
+                args.AddRange(["-tune", cfg.Tune]);
+            else
+                args.AddRange(["-svtav1-params", $"tune={cfg.Tune}"]);
+        }
+
         if (cfg.UseConstantQuality)
         {
-            rate = isNvenc ? $"-rc vbr -cq {cfg.Cq} -b:v 0" : $"-crf {cfg.Cq}";
+            if (isNvenc)
+                args.AddRange(["-rc", "vbr", "-cq", $"{cfg.Cq}", "-b:v", "0"]);
+            else
+                args.AddRange(["-crf", $"{cfg.Cq}"]);
         }
         else if (isNvenc)
         {
             // teto de picos ~2,4x a média, tanque de 2 janelas de pico (validado na 5060 Ti)
             var maxrate = (int)(kbps * 2.4);
-            rate = $"-rc vbr -b:v {kbps}k -maxrate {maxrate}k -bufsize {maxrate * 2}k";
+            args.AddRange(["-rc", "vbr", "-b:v", $"{kbps}k",
+                "-maxrate", $"{maxrate}k", "-bufsize", $"{maxrate * 2}k"]);
         }
         else
         {
-            rate = $"-b:v {kbps}k"; // SVT não suporta VBV — só a média
+            args.AddRange(["-b:v", $"{kbps}k"]); // SVT não suporta VBV — só a média
         }
 
-        var multipass = isNvenc && !cfg.UseConstantQuality
-            ? (cfg.Multipass ? "-multipass fullres" : "-multipass disabled")
-            : ""; // no modo CQ o multipass fica oculto → usa o padrão do encoder
-        var lookahead = isNvenc ? (cfg.FastConversion ? "-rc-lookahead 0" : "-rc-lookahead 32") : "";
-        var profile = cfg.Profile != "none" ? $"-profile:v {cfg.Profile}" : "";
+        if (isNvenc && !cfg.UseConstantQuality)
+        {
+            args.AddRange(cfg.Multipass ? ["-multipass", "fullres"] : ["-multipass", "disabled"]);
+        } // no modo CQ o multipass fica oculto → usa o padrão do encoder
+
+        if (isNvenc)
+            args.AddRange(["-rc-lookahead", cfg.FastConversion ? "0" : "32"]);
+
+        if (cfg.Profile != "none")
+            args.AddRange(["-profile:v", cfg.Profile]);
+
         // comparação case-insensitive: o banco pode ter "Auto" (rótulo do combo) em vez de "auto"
-        var level = !string.Equals(cfg.Level, "auto", StringComparison.OrdinalIgnoreCase)
-            ? $"-level {cfg.Level}"
-            : "";
+        if (!string.Equals(cfg.Level, "auto", StringComparison.OrdinalIgnoreCase))
+            args.AddRange(["-level", cfg.Level]);
 
         // "-gpu" segue o espaço de índices do NVENC (= ordem do nvidia-smi/CUDA)
-        var boostArgs = effectiveBoost switch
+        switch (effectiveBoost)
         {
-            NvencBoost.AqOnly => "-spatial-aq 1 -temporal-aq 1 -aq-strength 8",
-            NvencBoost.Full => string.Join(' ',
-                "-spatial-aq 1 -temporal-aq 1 -aq-strength 8",
-                tuneOverridden ? "-tune uhq" : "",
-                "-tf_level 4",
-                "-lookahead_level auto"),
-            _ => "",
-        };
-        var gpuArgs = isNvenc && cudaGpu is { } gpu ? $"-gpu {gpu}" : "";
+            case NvencBoost.AqOnly:
+                args.AddRange(["-spatial-aq", "1", "-temporal-aq", "1", "-aq-strength", "8"]);
+                break;
+            case NvencBoost.Full:
+                args.AddRange(["-spatial-aq", "1", "-temporal-aq", "1", "-aq-strength", "8"]);
+                if (tuneOverridden)
+                    args.AddRange(["-tune", "uhq"]);
+                args.AddRange(["-tf_level", "4", "-lookahead_level", "auto"]);
+                break;
+        }
 
-        var codecArg = isNvenc ? "-c:v av1_nvenc" : "-c:v libsvtav1";
+        if (isNvenc && cudaGpu is { } gpu)
+            args.AddRange(["-gpu", $"{gpu}"]);
 
-        var args = string.Join(' ', new[]
-        {
-            codecArg,
-            preset, tune, rate, multipass, lookahead, profile, level, boostArgs, gpuArgs, $"-pix_fmt {pixFmt}",
-        }.Where(a => !string.IsNullOrWhiteSpace(a)));
+        args.AddRange(["-pix_fmt", pixFmt]);
 
         // 2-pass de verdade só no SVT (bitrate médio + multipass); NVENC usa multipass interno
         var twoPass = !isNvenc && !cfg.UseConstantQuality && cfg.Multipass;
@@ -189,7 +213,7 @@ public class EncodeService
 
     private static string[] BuildArgs(
         string sourcePath, JobItemRef item, string? outputPath,
-        string videoArgs, string passLogBase, int pass, IProgress<EncodeProgress>? progress, double duration)
+        IReadOnlyList<string> videoArgs, string passLogBase, int pass, IProgress<EncodeProgress>? progress, double duration)
     {
         var args = new List<string>
         {
@@ -210,7 +234,7 @@ public class EncodeService
         // o final recebe só os capítulos gerados na tela de Episódios).
         args.AddRange(["-map_chapters", "-1"]);
 
-        args.AddRange(videoArgs.Split(' '));
+        args.AddRange(videoArgs);
         // Áudio re-encodado em AAC 160k (como no script original): stream-copy quebra o corte
         // -t/-ss (o áudio copiado estoura a duração da parte e desalinha os capítulos).
         args.AddRange(["-c:a", "aac", "-b:a", "160k"]);
@@ -219,14 +243,17 @@ public class EncodeService
         // tem que vir SEMPRE POR ÚLTIMO. Antes, o pass 1 terminava em "-f null NUL" ANTES
         // dos -c:v/-b:v; o encoder nunca era acionado, o statsfile nascia vazio e o pass 2
         // morria com "Invalid stats file size".
+        // -progress em TODAS as passadas (inclusive a 1ª, que não reporta nada à UI): é a
+        // fonte de "sinal de vida" que o watchdog de stall consome. Metadados apenas — não
+        // muda nada no encode. Vai ANTES do arquivo de saída, que tem que ser o último arg.
+        args.AddRange(["-progress", "pipe:1", "-nostats"]);
+
         if (pass == 1)
         {
             args.AddRange(["-an", "-f", "null", NulDevice()]);
         }
         else
         {
-            if (progress is not null)
-                args.AddRange(["-progress", "pipe:1", "-nostats"]);
             args.Add(outputPath!);
         }
 
@@ -273,20 +300,15 @@ public class EncodeService
 
     private async Task RunFfmpegAsync(string[] args, CancellationToken ct, IProgress<EncodeProgress>? progress, double duration)
     {
-        var psi = new ProcessStartInfo(_ffmpeg)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        foreach (var a in args)
-            psi.ArgumentList.Add(a);
-
-        using var proc = new Process { StartInfo = psi };
-        proc.Start();
+        using var proc = ProcessRunner.Start(_ffmpeg, args);
 
         var stderrTask = proc.StandardError.ReadToEndAsync(CancellationToken.None);
+        var stallCts = new CancellationTokenSource();
+        // Qualquer linha na stdout é sinal de vida (-progress emite pares chave=valor o
+        // tempo todo, inclusive na passada 1). Escrita sem volatile: o pior caso de corrida
+        // é o watchdog ver um atraso maior um ciclo depois — sem consequência.
+        var lastActivityTicks = Environment.TickCount64;
+        var stalled = false;
 
         async Task PumpOutputAsync()
         {
@@ -295,6 +317,7 @@ public class EncodeService
             var speed = 0.0;
             while (await proc.StandardOutput.ReadLineAsync(CancellationToken.None) is { } line)
             {
+                lastActivityTicks = Environment.TickCount64;
                 if (progress is null || duration <= 0)
                     continue;
 
@@ -315,38 +338,57 @@ public class EncodeService
             }
         }
 
+        async Task WatchStallAsync()
+        {
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(StallPollIntervalMs, stallCts.Token).ConfigureAwait(false);
+                    if (proc.HasExited)
+                        return;
+                    if (Environment.TickCount64 - lastActivityTicks > _stallTimeout.TotalMilliseconds)
+                    {
+                        stalled = true;
+                        ProcessRunner.TryKill(proc);
+                        return;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // encerramento normal — o watchdog só existe enquanto o ffmpeg roda
+            }
+        }
+
         var pumpTask = PumpOutputAsync();
+        var watchdogTask = WatchStallAsync();
         try
         {
             await proc.WaitForExitAsync(ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            TryKill(proc);
+            ProcessRunner.TryKill(proc);
             throw;
+        }
+        finally
+        {
+            stallCts.Cancel();
+            await watchdogTask.ConfigureAwait(false);
         }
 
         await pumpTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
 
+        // ffmpeg sem saída além do tempo de stall: morreu por watchdog (ou saiu no mesmo
+        // instante em que disparou — aí o código 0/1 manda e tratamos como saída comum).
+        if (stalled && proc.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"ffmpeg ficou {Math.Round(_stallTimeout.TotalMinutes)} min sem produzir saída — morto por provável travamento: {ProcessRunner.Truncate(stderr, 400)}");
+
         // mkvmerge aceita 1 como warning; ffmpeg não: qualquer código != 0 é erro
         if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg falhou (código {proc.ExitCode}): {Truncate(stderr, 800)}");
+            throw new InvalidOperationException($"ffmpeg falhou (código {proc.ExitCode}): {ProcessRunner.Truncate(stderr, 800)}");
     }
-
-    private static void TryKill(Process proc)
-    {
-        try
-        {
-            if (!proc.HasExited)
-                proc.Kill(entireProcessTree: true);
-        }
-        catch
-        {
-            // processo já morreu — nada a fazer
-        }
-    }
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
 }

@@ -52,30 +52,18 @@ public class MergeService
         if (chaptersTxt.Trim().Length > 0)
             await File.WriteAllTextAsync(chaptersPath, chaptersTxt, ct).ConfigureAwait(false);
 
-        var psi = new ProcessStartInfo(_mkvmerge)
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add(finalPath);
+        var args = new List<string> { "-o", finalPath };
         if (chaptersTxt.Trim().Length > 0)
-        {
-            psi.ArgumentList.Add("--chapters");
-            psi.ArgumentList.Add(chaptersPath);
-        }
+            args.AddRange(["--chapters", chaptersPath]);
 
         for (var i = 0; i < parts.Count; i++)
         {
             if (i > 0)
-                psi.ArgumentList.Add("+"); // append ao anterior
-            psi.ArgumentList.Add(parts[i].PartPath);
+                args.Add("+"); // append ao anterior
+            args.Add(parts[i].PartPath);
         }
 
-        using var proc = new Process { StartInfo = psi };
-        proc.Start();
+        using var proc = ProcessRunner.Start(_mkvmerge, args);
         var outputTask = proc.StandardOutput.ReadToEndAsync(CancellationToken.None);
         var errorTask = proc.StandardError.ReadToEndAsync(CancellationToken.None);
 
@@ -85,12 +73,7 @@ public class MergeService
         }
         catch (OperationCanceledException)
         {
-            try
-            {
-                if (!proc.HasExited)
-                    proc.Kill(entireProcessTree: true);
-            }
-            catch { }
+            ProcessRunner.TryKill(proc);
             throw;
         }
 
@@ -99,9 +82,6 @@ public class MergeService
 
         // mkvmerge: 0 = ok, 1 = avisos (arquivo gerado), >= 2 = erro
         if (proc.ExitCode >= 2)
-            throw new InvalidOperationException($"mkvmerge falhou (código {proc.ExitCode}): {Truncate(error + " " + output, 800)}");
+            throw new InvalidOperationException($"mkvmerge falhou (código {proc.ExitCode}): {ProcessRunner.Truncate(error + " " + output, 800)}");
     }
-
-    private static string Truncate(string s, int max) =>
-        s.Length <= max ? s : s[..max] + "…";
 }

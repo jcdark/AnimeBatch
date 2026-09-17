@@ -109,13 +109,32 @@ internal class QueueRunner
         StatsUpdated?.Invoke(LastStats);
     }
 
+    /// <summary>Timeout de stall do encode (setting "queue.stallMinutes", em minutos;
+    /// vazio/inválido = default de 10). Clamp 1–120: valor absurdo não pode desligar a
+    /// proteção nem matar um encode saudável.</summary>
+    private static TimeSpan ReadStallTimeout()
+    {
+        try
+        {
+            var raw = AppServices.Settings.GetAsync(SettingsRepository.StallMinutes)
+                .GetAwaiter().GetResult();
+            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var minutes))
+                return TimeSpan.FromMinutes(Math.Clamp(minutes, 1, 120));
+        }
+        catch
+        {
+            // leitura de setting não pode impedir a fila de rodar
+        }
+        return EncodeService.DefaultStallTimeout;
+    }
+
     private async Task ProcessQueueAsync(CancellationToken ct)
     {
         var tools = AppServices.Tools;
         if (tools.FfmpegPath is null || tools.MkvMergePath is null || AppServices.Probe is null)
             throw new InvalidOperationException("Ferramentas essenciais ausentes (ffmpeg/mkvmerge/ffprobe).");
 
-        var encode = new EncodeService(tools.FfmpegPath);
+        var encode = new EncodeService(tools.FfmpegPath, ReadStallTimeout());
         var merge = new MergeService(tools.MkvMergePath);
         var upscale = new UpscaleService(tools.FfmpegPath);
 

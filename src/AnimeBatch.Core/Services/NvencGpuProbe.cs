@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace AnimeBatch.Core.Services;
 
 /// <summary>
@@ -22,7 +20,7 @@ public static class NvencGpuProbe
             var smi = DmlDeviceCalibration.FindNvidiaSmi();
             if (smi is not null)
             {
-                var (stdout, ok) = Run(smi, "--query-gpu=index,name --format=csv,noheader", 10_000);
+                var (stdout, ok) = ProcessRunner.Capture(smi, "--query-gpu=index,name --format=csv,noheader", 10_000);
                 if (ok)
                     devices = ParseLines(stdout.Split('\n'));
             }
@@ -67,33 +65,5 @@ public static class NvencGpuProbe
         if (cards.Count == 0)
             return null;
         return GpuSelector.Finish(cards, HardwareGpuService.ExpandWorkers(cards, devices));
-    }
-
-    private static (string Stdout, bool Ok) Run(string exe, string args, int timeoutMs)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo(exe)
-            {
-                Arguments = args,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            using var proc = Process.Start(psi)!;
-            var stdout = proc.StandardOutput.ReadToEnd();
-            proc.StandardError.ReadToEnd();
-            if (!proc.WaitForExit(timeoutMs))
-            {
-                try { proc.Kill(entireProcessTree: true); } catch { }
-                return ("", false);
-            }
-            return (stdout, proc.ExitCode == 0);
-        }
-        catch
-        {
-            return ("", false);
-        }
     }
 }

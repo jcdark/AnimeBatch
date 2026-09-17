@@ -5,6 +5,63 @@ namespace AnimeBatch.Tests;
 
 public class EncodeServiceTests
 {
+    /// <summary>Wrapper do teste: BuildVideoArgs devolve args DISCRETOS (um token por item,
+    /// como vão para o Process.ArgumentList); os asserts abaixo enxergam a linha colada,
+    /// que é o que o comando final representa.</summary>
+    private static (string Args, bool TwoPass) BuildVideoArgs(
+        CodecEncodeConfig cfg, int kbps, int? cudaGpu = null, NvencBoost boost = NvencBoost.Off)
+    {
+        var (args, twoPass) = EncodeService.BuildVideoArgs(cfg, kbps, cudaGpu, boost);
+        return (string.Join(' ', args), twoPass);
+    }
+
+    [Fact]
+    public void Args_sao_itens_discretos_nenhum_token_tem_espaco()
+    {
+        // um item de ArgumentList com espaço viraria UM argumento citado no ffmpeg
+        var cfg = new CodecEncodeConfig { Code = "nvenc_av1", Preset = 7, Tune = "hq", QualityBoost = true, Multipass = true };
+        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500, cudaGpu: 2, boost: NvencBoost.Full);
+        Assert.All(args, a => Assert.DoesNotContain(' ', a));
+        Assert.All(args, a => Assert.False(string.IsNullOrWhiteSpace(a)));
+    }
+
+    [Fact]
+    public void Comando_nvenc_bitrate_completo_byte_identico()
+    {
+        // trava de regressão: a ordem e o conteúdo exatos do comando não podem mudar
+        var cfg = new CodecEncodeConfig { Code = "nvenc_av1", Preset = 5, Tune = "hq", UseConstantQuality = false, Multipass = true };
+        var (args, twoPass) = BuildVideoArgs(cfg, 500);
+
+        Assert.False(twoPass);
+        Assert.Equal(
+            "-c:v av1_nvenc -preset p5 -tune hq -rc vbr -b:v 500k -maxrate 1200k -bufsize 2400k " +
+            "-multipass fullres -rc-lookahead 32 -profile:v 0 -pix_fmt yuv420p",
+            args);
+    }
+
+    [Fact]
+    public void Comando_svt_2pass_byte_identico()
+    {
+        var cfg = new CodecEncodeConfig { Code = "svt_av1_10bit", Preset = 6, UseConstantQuality = false, Multipass = true };
+        var (args, twoPass) = BuildVideoArgs(cfg, 500);
+
+        Assert.True(twoPass);
+        Assert.Equal("-c:v libsvtav1 -preset 6 -b:v 500k -profile:v 0 -pix_fmt yuv420p10le", args);
+    }
+
+    [Fact]
+    public void Comando_nvenc_boost_full_byte_identico()
+    {
+        var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Preset = 7, Tune = "hq", QualityBoost = true };
+        var (args, _) = BuildVideoArgs(cfg, 500, cudaGpu: 1, boost: NvencBoost.Full);
+
+        Assert.Equal(
+            "-c:v av1_nvenc -preset p7 -rc vbr -b:v 500k -maxrate 1200k -bufsize 2400k " +
+            "-multipass fullres -rc-lookahead 32 -profile:v 0 -spatial-aq 1 -temporal-aq 1 -aq-strength 8 " +
+            "-tune uhq -tf_level 4 -lookahead_level auto -gpu 1 -pix_fmt p010le",
+            args);
+    }
+
     [Theory]
     [InlineData("out_time_us=2500000", 10.0, 25.0)]
     [InlineData("out_time_us=10000000", 10.0, 100.0)]
@@ -37,7 +94,7 @@ public class EncodeServiceTests
     public void Nvenc_bitrate_usa_vbr_com_teto_e_multipass()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1", Preset = 5, Tune = "hq", UseConstantQuality = false, Multipass = true };
-        var (args, twoPass) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, twoPass) = BuildVideoArgs(cfg, 500);
 
         Assert.False(twoPass); // NVENC usa multipass interno, não 2-pass com statsfile
         Assert.Contains("av1_nvenc", args);
@@ -54,7 +111,7 @@ public class EncodeServiceTests
     public void Nvenc_10bit_e_fast_conversion()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Preset = 5, FastConversion = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, _) = BuildVideoArgs(cfg, 500);
 
         Assert.Contains("p010le", args);
         Assert.Contains("-rc-lookahead 0", args);
@@ -65,7 +122,7 @@ public class EncodeServiceTests
     public void Svt_bitrate_com_multipass_e_2pass_de_verdade()
     {
         var cfg = new CodecEncodeConfig { Code = "svt_av1_10bit", Preset = 6, UseConstantQuality = false, Multipass = true };
-        var (args, twoPass) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, twoPass) = BuildVideoArgs(cfg, 500);
 
         Assert.True(twoPass); // igual ao script de referência: 2-pass no modo taxa de bits
         Assert.Contains("libsvtav1", args);
@@ -78,7 +135,7 @@ public class EncodeServiceTests
     public void Svt_cq_usa_crf_e_e_single_pass()
     {
         var cfg = new CodecEncodeConfig { Code = "svt_av1", UseConstantQuality = true, Cq = 22, Multipass = true };
-        var (args, twoPass) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, twoPass) = BuildVideoArgs(cfg, 500);
 
         Assert.False(twoPass);
         Assert.Contains("-crf 22", args);
@@ -89,7 +146,7 @@ public class EncodeServiceTests
     public void Nvenc_cq_usa_cq_e_perfil_e_nivel()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", UseConstantQuality = true, Cq = 30, Profile = "2", Level = "4.0" };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, _) = BuildVideoArgs(cfg, 500);
 
         Assert.Contains("-rc vbr -cq 30 -b:v 0", args);
         Assert.Contains("-profile:v 2", args);
@@ -102,7 +159,7 @@ public class EncodeServiceTests
     {
         // regressão: o combo gravava o RÓTULO "Auto" e o ffmpeg rejeitava "-level Auto"
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Level = "Auto" };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, _) = BuildVideoArgs(cfg, 500);
         Assert.DoesNotContain("-level", args);
     }
 
@@ -110,11 +167,11 @@ public class EncodeServiceTests
     public void Nvenc_bitrate_emite_multipass_conforme_config()
     {
         var cfgOn = new CodecEncodeConfig { Code = "nvenc_av1", UseConstantQuality = false, Multipass = true };
-        var (argsOn, _) = EncodeService.BuildVideoArgs(cfgOn, 500);
+        var (argsOn, _) = BuildVideoArgs(cfgOn, 500);
         Assert.Contains("-multipass fullres", argsOn);
 
         var cfgOff = cfgOn with { Multipass = false };
-        var (argsOff, _) = EncodeService.BuildVideoArgs(cfgOff, 500);
+        var (argsOff, _) = BuildVideoArgs(cfgOff, 500);
         Assert.Contains("-multipass disabled", argsOff);
     }
 
@@ -124,7 +181,7 @@ public class EncodeServiceTests
     public void Nvenc_boost_full_emite_aq_uhq_e_analise_estendida()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Preset = 7, Tune = "hq", QualityBoost = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500, cudaGpu: 1, boost: NvencBoost.Full);
+        var (args, _) = BuildVideoArgs(cfg, 500, cudaGpu: 1, boost: NvencBoost.Full);
 
         Assert.Contains("-spatial-aq 1", args);
         Assert.Contains("-temporal-aq 1", args);
@@ -140,7 +197,7 @@ public class EncodeServiceTests
     public void Nvenc_boost_full_respeita_tune_escolhido_pelo_usuario()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1", Tune = "ll", QualityBoost = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500, boost: NvencBoost.Full);
+        var (args, _) = BuildVideoArgs(cfg, 500, boost: NvencBoost.Full);
 
         Assert.Contains("-tune ll", args);
         Assert.DoesNotContain("uhq", args);
@@ -150,7 +207,7 @@ public class EncodeServiceTests
     public void Nvenc_boost_aqonly_nao_inclui_analise_estendida()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1", QualityBoost = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500, boost: NvencBoost.AqOnly);
+        var (args, _) = BuildVideoArgs(cfg, 500, boost: NvencBoost.AqOnly);
 
         Assert.Contains("-spatial-aq 1", args);
         Assert.DoesNotContain("uhq", args);
@@ -162,7 +219,7 @@ public class EncodeServiceTests
     public void Nvenc_boost_off_mantem_argumentos_classicos()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1", Preset = 5, Tune = "hq" };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500);
+        var (args, _) = BuildVideoArgs(cfg, 500);
 
         Assert.Contains("-tune hq", args);
         Assert.DoesNotContain("-spatial-aq", args);
@@ -173,7 +230,7 @@ public class EncodeServiceTests
     public void FastConversion_anula_o_boost_mesmo_pedindo_full()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1", FastConversion = true, QualityBoost = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 500, boost: NvencBoost.Full);
+        var (args, _) = BuildVideoArgs(cfg, 500, boost: NvencBoost.Full);
 
         Assert.Contains("-rc-lookahead 0", args);
         Assert.DoesNotContain("-spatial-aq", args);
@@ -183,7 +240,7 @@ public class EncodeServiceTests
     public void Nvenc_boost_funciona_no_modo_cq()
     {
         var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", UseConstantQuality = true, Cq = 28, QualityBoost = true };
-        var (args, _) = EncodeService.BuildVideoArgs(cfg, 0, boost: NvencBoost.Full);
+        var (args, _) = BuildVideoArgs(cfg, 0, boost: NvencBoost.Full);
 
         Assert.Contains("-rc vbr -cq 28 -b:v 0", args);
         Assert.Contains("-spatial-aq 1", args);
