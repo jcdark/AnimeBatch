@@ -58,11 +58,16 @@ internal static class AppServices
         }
     }
 
-    /// <summary>Serviço TMDB pronto pra uso, ou null se a chave não estiver configurada.</summary>
+    /// <summary>Serviço TMDB pronto pra uso, ou null se a chave não estiver configurada.
+    /// Síncrono: só para caminhos sem await (ctor); handlers novos preferem GetTmdbAsync.</summary>
     public static TmdbService? GetTmdb() =>
-        Settings.GetAsync(SettingsRepository.TmdbApiKey).GetAwaiter().GetResult() is { Length: > 0 } key
-            ? new TmdbService(key)
-            : null;
+        GetTmdbAsync().GetAwaiter().GetResult();
+
+    public static async Task<TmdbService?> GetTmdbAsync()
+    {
+        var key = await Settings.GetAsync(SettingsRepository.TmdbApiKey).ConfigureAwait(false);
+        return key is { Length: > 0 } ? new TmdbService(key) : null;
+    }
 
     /// <summary>Som de fim de conversão (tocado quando um job/parte conclui).</summary>
     public static void PlayCompletionSound() =>
@@ -70,11 +75,15 @@ internal static class AppServices
 
     /// <summary>
     /// Pasta de destino das conversões: o que o usuário configurou ou, por padrão,
-    /// a pasta Vídeos do perfil do Windows.
+    /// a pasta Vídeos do perfil do Windows. Síncrono: só para caminhos sem await
+    /// (roda em threadpool na fila); handlers novos preferem GetOutputDirectoryAsync.
     /// </summary>
-    public static string GetOutputDirectory()
+    public static string GetOutputDirectory() =>
+        GetOutputDirectoryAsync().GetAwaiter().GetResult();
+
+    public static async Task<string> GetOutputDirectoryAsync()
     {
-        var configured = Settings.GetAsync(SettingsRepository.OutputDirectory).GetAwaiter().GetResult();
+        var configured = await Settings.GetAsync(SettingsRepository.OutputDirectory).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
             return configured;
 
@@ -88,11 +97,14 @@ internal static class AppServices
 
     /// <summary>
     /// Pasta Origem Vídeos (Configurações): null se não configurada — aí a aba Episódios
-    /// começa vazia e o usuário escolhe a pasta.
+    /// começa vazia e o usuário escolhe a pasta. Síncrono: só para caminhos sem await.
     /// </summary>
-    public static string? GetSourceDirectory()
+    public static string? GetSourceDirectory() =>
+        GetSourceDirectoryAsync().GetAwaiter().GetResult();
+
+    public static async Task<string?> GetSourceDirectoryAsync()
     {
-        var configured = Settings.GetAsync(SettingsRepository.SourceDirectory).GetAwaiter().GetResult();
+        var configured = await Settings.GetAsync(SettingsRepository.SourceDirectory).ConfigureAwait(false);
         return string.IsNullOrWhiteSpace(configured) || !Directory.Exists(configured) ? null : configured;
     }
 

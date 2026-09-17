@@ -89,9 +89,9 @@ public sealed partial class QueuePage : Page
     {
         InitializeComponent();
         Localize();
-        Load();
+        ReloadSafe();
 
-        AppServices.Queue.Changed += () => DispatcherQueue.TryEnqueue(Load);
+        AppServices.Queue.Changed += () => DispatcherQueue.TryEnqueue(ReloadSafe);
         AppServices.Queue.Progress += (jobId, pct) => DispatcherQueue.TryEnqueue(() =>
         {
             _lastPercent[jobId] = pct;
@@ -101,31 +101,53 @@ public sealed partial class QueuePage : Page
                 row?.ProgressPercent = pct;
             }
         });
-        AppServices.Queue.StatsUpdated += _ => { }; // rodapé é tratado na MainWindow
+        // (StatsUpdated é tratado na MainWindow — nada a fazer aqui)
 
         // Preferência persistida: remover da fila ao ser convertido
-        ChkAutoRemove.IsChecked = AppServices.Settings
-            .GetAsync(SettingsRepository.QueueAutoRemove)
-            .GetAwaiter().GetResult() == "true";
+        Ui.Safe(LoadAutoRemovePrefAsync, ShowError);
     }
 
-    private async void ChkAutoRemove_Changed(object sender, RoutedEventArgs e)
+    private bool _autoRemoveLoaded;
+
+    private async Task LoadAutoRemovePrefAsync()
     {
-        await AppServices.Settings.SetAsync(
-            SettingsRepository.QueueAutoRemove,
-            ChkAutoRemove.IsChecked == true ? "true" : "false");
+        ChkAutoRemove.IsChecked = await AppServices.Settings
+            .GetAsync(SettingsRepository.QueueAutoRemove) == "true";
+        _autoRemoveLoaded = true; // evita gravar de volta a preferência durante a carga
     }
 
-    private void BtnClear_Click(object sender, RoutedEventArgs e)
+    /// <summary>Recarrega a fila capturando exceção — Load roda a cada evento da fila e
+    /// falha de banco não pode derrubar o app em silêncio.</summary>
+    private void ReloadSafe() => Ui.Safe(LoadAsync, ShowError);
+
+    private void ShowError(Exception ex)
     {
-        // Remove tudo, exceto o job em execução agora (ele conclui e entra no histórico)
-        var removed = AppServices.Jobs.ClearAllAsync().GetAwaiter().GetResult();
-        Load();
-        Info.Severity = InfoBarSeverity.Success;
-        Info.Title = AppServices.Localizer.T("queue.cleared");
-        Info.Message = AppServices.Localizer.T("queue.clearedDetail", removed);
+        Info.Severity = InfoBarSeverity.Error;
+        Info.Title = AppServices.Localizer.T("queue.title");
+        Info.Message = ex.Message;
         Info.IsOpen = true;
     }
+
+    private void ChkAutoRemove_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_autoRemoveLoaded)
+            return;
+        Ui.Safe(async () => await AppServices.Settings.SetAsync(
+            SettingsRepository.QueueAutoRemove,
+            ChkAutoRemove.IsChecked == true ? "true" : "false"), ShowError);
+    }
+
+    private void BtnClear_Click(object sender, RoutedEventArgs e) =>
+        Ui.Safe(async () =>
+        {
+            // Remove tudo, exceto o job em execução agora (ele conclui e entra no histórico)
+            var removed = await AppServices.Jobs.ClearAllAsync();
+            await LoadAsync();
+            Info.Severity = InfoBarSeverity.Success;
+            Info.Title = AppServices.Localizer.T("queue.cleared");
+            Info.Message = AppServices.Localizer.T("queue.clearedDetail", removed);
+            Info.IsOpen = true;
+        }, ShowError);
 
     private void Localize()
     {
@@ -146,9 +168,9 @@ public sealed partial class QueuePage : Page
     /// Reconcilia as linhas: só reconstrói a lista quando a ordem/quantidade muda;
     /// no dia a dia atualiza cada linha in-place, sem piscar.
     /// </summary>
-    private void Load()
+    private async Task LoadAsync()
     {
-        var jobs = AppServices.Jobs.GetAllOrderedAsync().GetAwaiter().GetResult();
+        var jobs = await AppServices.Jobs.GetAllOrderedAsync();
         var ids = jobs.Select(j => j.Id).ToList();
 
         if (_rows is null || !_rows.Select(r => r.Id).SequenceEqual(ids))
@@ -171,49 +193,54 @@ public sealed partial class QueuePage : Page
 
     private JobRowViewModel? Selected => JobsList.SelectedItem as JobRowViewModel;
 
-    private void MoveSelected(int delta)
-    {
-        if (Selected?.Job is not { State: JobState.Pending or JobState.Paused } job)
-            return;
-        AppServices.Jobs.MoveAsync(job.Id, delta).GetAwaiter().GetResult();
-        Load();
-    }
+    private void MoveSelected(int delta) =>
+        Ui.Safe(async () =>
+        {
+            if (Selected?.Job is not { State: JobState.Pending or JobState.Paused } job)
+                return;
+            await AppServices.Jobs.MoveAsync(job.Id, delta);
+            await LoadAsync();
+        }, ShowError);
 
     private void BtnUp_Click(object sender, RoutedEventArgs e) => MoveSelected(-1);
     private void BtnDown_Click(object sender, RoutedEventArgs e) => MoveSelected(+1);
     private void BtnTop_Click(object sender, RoutedEventArgs e) => MoveSelected(int.MinValue);
 
-    private void BtnRemove_Click(object sender, RoutedEventArgs e)
-    {
-        if (Selected is null)
-            return;
-        AppServices.Jobs.DeleteAsync(Selected.Job.Id).GetAwaiter().GetResult();
-        Load();
-    }
+    private void BtnRemove_Click(object sender, RoutedEventArgs e) =>
+        Ui.Safe(async () =>
+        {
+            if (Selected is null)
+                return;
+            await AppServices.Jobs.DeleteAsync(Selected.Job.Id);
+            await LoadAsync();
+        }, ShowError);
 
     private void RemoveRow_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: JobRowViewModel row })
-        {
-            AppServices.Jobs.DeleteAsync(row.Job.Id).GetAwaiter().GetResult();
-            Load();
-        }
-    }
-
-    private async void BtnStart_Click(object sender, RoutedEventArgs e)
-    {
-        var tools = AppServices.Tools;
-        if (tools.FfmpegPath is null || tools.MkvMergePath is null || AppServices.Probe is null)
-        {
-            Info.Severity = InfoBarSeverity.Error;
-            Info.Title = AppServices.Localizer.T("episodes.ffprobeMissingTitle");
-            Info.Message = AppServices.Localizer.T("episodes.ffprobeMissingMsg");
-            Info.IsOpen = true;
+        if (sender is not FrameworkElement { Tag: JobRowViewModel row })
             return;
-        }
-
-        await AppServices.Queue.RunAsync();
+        Ui.Safe(async () =>
+        {
+            await AppServices.Jobs.DeleteAsync(row.Job.Id);
+            await LoadAsync();
+        }, ShowError);
     }
+
+    private void BtnStart_Click(object sender, RoutedEventArgs e) =>
+        Ui.Safe(async () =>
+        {
+            var tools = AppServices.Tools;
+            if (tools.FfmpegPath is null || tools.MkvMergePath is null || AppServices.Probe is null)
+            {
+                Info.Severity = InfoBarSeverity.Error;
+                Info.Title = AppServices.Localizer.T("episodes.ffprobeMissingTitle");
+                Info.Message = AppServices.Localizer.T("episodes.ffprobeMissingMsg");
+                Info.IsOpen = true;
+                return;
+            }
+
+            await AppServices.Queue.RunAsync();
+        }, ShowError);
 
     private void BtnPause_Click(object sender, RoutedEventArgs e) => AppServices.Queue.Pause();
 
@@ -252,12 +279,7 @@ public sealed partial class QueuePage : Page
         {
             Header = t.T("episodes.model"),
             MinWidth = 220,
-            SelectedIndex = job.UpscaleModel switch
-            {
-                "realesrgan" => 1,
-                "onnx" => 2,
-                _ => 0,
-            },
+            SelectedIndex = Ui.ModelIndexFromCode(job.UpscaleModel),
         };
         cmbModel.Items.Add(t.T("episodes.modelCugan"));
         cmbModel.Items.Add(t.T("episodes.modelEsrgan"));
@@ -267,13 +289,7 @@ public sealed partial class QueuePage : Page
         {
             Header = t.T("episodes.resolution"),
             MinWidth = 220,
-            SelectedIndex = job.UpscaleTargetHeight switch
-            {
-                720 => 0,
-                1440 => 2,
-                2160 => 3,
-                _ => 1,
-            },
+            SelectedIndex = Ui.ResolutionIndexFromHeight(job.UpscaleTargetHeight),
         };
 
         var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
@@ -305,20 +321,16 @@ public sealed partial class QueuePage : Page
                 UpscaleMode = (UpscaleMode)Math.Max(0, cmbMode.SelectedIndex),
                 UpscaleModel = cmbMode.SelectedIndex == 0
                     ? null
-                    : cmbModel.SelectedIndex switch { 1 => "realesrgan", 2 => "onnx", _ => "realcugan" },
-                UpscaleTargetHeight = cmbMode.SelectedIndex == 0 ? null : cmbRes.SelectedIndex switch
-                {
-                    0 => 720,
-                    2 => 1440,
-                    3 => 2160,
-                    _ => 1080,
-                },
+                    : Ui.ModelFromIndex(cmbModel.SelectedIndex),
+                UpscaleTargetHeight = cmbMode.SelectedIndex == 0
+                    ? null
+                    : Ui.HeightFromResolutionIndex(cmbRes.SelectedIndex),
                 VideoCodec = VideoCodecOptions.Options[Math.Clamp(cmbCodec.SelectedIndex, 0, VideoCodecOptions.Options.Length - 1)].Code,
             };
 
             await AppServices.Jobs.UpdateAsync(updated);
             await Task.Yield();
-            Load();
+            await LoadAsync();
         };
 
         await dialog.ShowAsync();

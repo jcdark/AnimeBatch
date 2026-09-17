@@ -2,7 +2,7 @@
     x:Class="AnimeBatch.App.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="AnimeBatch V0.26">
+    Title="AnimeBatch">
 
     <Grid>
         <Grid.RowDefinitions>

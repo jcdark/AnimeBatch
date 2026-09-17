@@ -63,7 +63,7 @@ public sealed partial class EpisodesPage : Page
     /// <summary>Pasta Origem Vídeos (Configurações): carrega os episódios automaticamente.</summary>
     private async Task LoadDefaultFolderAsync()
     {
-        var source = AppServices.GetSourceDirectory();
+        var source = await AppServices.GetSourceDirectoryAsync();
         if (!string.IsNullOrEmpty(source) && Directory.Exists(source))
             await LoadFolderAsync(source);
     }
@@ -134,7 +134,9 @@ public sealed partial class EpisodesPage : Page
             return;
         }
 
-        await ProbeEpisodeAsync(ep);
+        // Probe + leitura de keywords/série tocam banco e processo — falha vira InfoBar, não crash
+        Ui.Safe(async () => await ProbeEpisodeAsync(ep),
+            ex => ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message));
     }
 
     /// <summary>Liga a coleção de capítulos do episódio à lista, com renumeração ao mover/adicionar/remover.</summary>
@@ -308,19 +310,8 @@ public sealed partial class EpisodesPage : Page
             2 => UpscaleMode.WithEncode,
             _ => UpscaleMode.None,
         },
-        CmbUpscaleModel.SelectedIndex switch
-        {
-            1 => "realesrgan",
-            2 => "onnx",
-            _ => "realcugan",
-        },
-        CmbUpscaleResolution.SelectedIndex switch
-        {
-            0 => 720,
-            2 => 1440,
-            3 => 2160,
-            _ => 1080,
-        },
+        Ui.ModelFromIndex(CmbUpscaleModel.SelectedIndex),
+        Ui.HeightFromResolutionIndex(CmbUpscaleResolution.SelectedIndex),
         VideoCodecOptions.Options[Math.Clamp(CmbVideoCodec.SelectedIndex, 0, VideoCodecOptions.Options.Length - 1)].Code);
 
     /// <summary>Série sem cadastro é cadastrada na hora, com os defaults usados na fila.</summary>
@@ -530,7 +521,7 @@ public sealed partial class EpisodesPage : Page
     private void UpdateSizeEstimateLabels(double videoBytes)
     {
         var t = AppServices.Localizer;
-        SizeVideoLine.Text = t.T("episodes.sizeVideo", videoBytes > 0 ? FormatSize((long)videoBytes) : "—");
+        SizeVideoLine.Text = t.T("episodes.sizeVideo", videoBytes > 0 ? Ui.FormatSize((long)videoBytes) : "—");
     }
 
     private async Task UpdateSizeEstimateAsync()
@@ -549,22 +540,19 @@ public sealed partial class EpisodesPage : Page
 
         var t = AppServices.Localizer;
         // No modo CQ não há bitrate → sem estimativa de vídeo e sem total
-        SizeVideoLine.Text = t.T("episodes.sizeVideo", cqMode ? "—" : FormatSize((long)(videoKb * 1024)));
-        SizeAudioLine.Text = t.T("episodes.sizeAudio", FormatSize((long)(audioKb * 1024)));
-        SizeTotalLine.Text = cqMode ? "—" : t.T("episodes.sizeTotal", FormatSize((long)((videoKb + audioKb) * 1024)));
+        SizeVideoLine.Text = t.T("episodes.sizeVideo", cqMode ? "—" : Ui.FormatSize((long)(videoKb * 1024)));
+        SizeAudioLine.Text = t.T("episodes.sizeAudio", Ui.FormatSize((long)(audioKb * 1024)));
+        SizeTotalLine.Text = cqMode ? "—" : t.T("episodes.sizeTotal", Ui.FormatSize((long)((videoKb + audioKb) * 1024)));
     }
-
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1L << 30 => $"{bytes / (double)(1L << 30):F2} GB",
-        >= 1L << 20 => $"{bytes / (double)(1L << 20):F1} MB",
-        >= 1L << 10 => $"{bytes / (double)(1L << 10):F1} KB",
-        _ => $"{bytes} B",
-    };
 
     // ---------- enfileirar ----------
 
-    private async void BtnEnqueue_Click(object sender, RoutedEventArgs e)
+    private void BtnEnqueue_Click(object sender, RoutedEventArgs e) =>
+        Ui.Safe(EnqueueCheckedAsync, ex => ShowStatus(InfoBarSeverity.Error,
+            AppServices.Localizer.T("episodes.enqueue"), ex.Message));
+
+    /// <summary>Probe serial dos episódios marcados + gravação dos jobs no banco.</summary>
+    private async Task EnqueueCheckedAsync()
     {
         if (AppServices.Probe is null)
         {

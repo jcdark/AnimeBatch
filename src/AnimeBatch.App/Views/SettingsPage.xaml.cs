@@ -31,13 +31,6 @@ public sealed partial class SettingsPage : Page
         AddToolRow("realcugan-ncnn-vulkan.exe", AppServices.Tools.RealCuganPath, false);
         AddToolRow("realesrgan-ncnn-vulkan.exe", AppServices.Tools.RealesrganPath, false);
 
-        var key = AppServices.Settings.GetAsync(AnimeBatch.Core.Services.SettingsRepository.TmdbApiKey)
-            .GetAwaiter().GetResult();
-        TmdbKeyBox.Password = key ?? "";
-        TmdbKeyStatus.Text = string.IsNullOrEmpty(key)
-            ? AppServices.Localizer.T("settings.tmdbKeyStatusNone")
-            : AppServices.Localizer.T("settings.tmdbKeyStatusSet");
-
         // Idiomas disponíveis na pasta i18n do app
         var localizer = AppServices.Localizer;
         CmbLanguage.ItemsSource = localizer.Languages
@@ -51,7 +44,6 @@ public sealed partial class SettingsPage : Page
         var t = AppServices.Localizer;
 
         // Pastas de origem e destino
-        SourceDirBox.Text = AppServices.GetSourceDirectory() ?? "";
         SourceDirBox.LostFocus += async (_, _) =>
         {
             var path = SourceDirBox.Text.Trim();
@@ -61,12 +53,9 @@ public sealed partial class SettingsPage : Page
                 : t.T("settings.sourceDirHint");
         };
 
-        OutDirBox.Text = AppServices.GetOutputDirectory();
         OutDirBox.LostFocus += async (_, _) => await SaveOutputDirAsync();
 
         // GPUs de upscaling: vazio = automático (detecta as NVIDIA pelo próprio upscaler)
-        UpscaleGpusBox.Text = AppServices.Settings
-            .GetAsync(SettingsRepository.UpscaleGpus).GetAwaiter().GetResult() ?? "";
         UpscaleGpusBox.PlaceholderText = "auto";
         UpscaleGpusBox.LostFocus += async (_, _) =>
         {
@@ -74,7 +63,29 @@ public sealed partial class SettingsPage : Page
             await AppServices.Settings.SetAsync(SettingsRepository.UpscaleGpus, value);
             UpscaleGpusHint.Text = t.T("settings.upscaleGpusHint") + $"  ({t.T("settings.saved")})";
         };
+        // Preferências do banco (chave TMDB, pastas, GPUs legadas) carregam async —
+        // ctor não pode bloquear em I/O
+        Ui.Safe(LoadPreferencesAsync, ex =>
+        {
+            FatalInfo.Severity = InfoBarSeverity.Error;
+            FatalInfo.Title = ex.Message;
+            FatalInfo.Message = "";
+            FatalInfo.IsOpen = true;
+        });
         _ = LoadGpuDetectionAsync();
+    }
+
+    private async Task LoadPreferencesAsync()
+    {
+        var key = await AppServices.Settings.GetAsync(SettingsRepository.TmdbApiKey);
+        TmdbKeyBox.Password = key ?? "";
+        TmdbKeyStatus.Text = string.IsNullOrEmpty(key)
+            ? AppServices.Localizer.T("settings.tmdbKeyStatusNone")
+            : AppServices.Localizer.T("settings.tmdbKeyStatusSet");
+
+        SourceDirBox.Text = await AppServices.GetSourceDirectoryAsync() ?? "";
+        OutDirBox.Text = await AppServices.GetOutputDirectoryAsync();
+        UpscaleGpusBox.Text = await AppServices.Settings.GetAsync(SettingsRepository.UpscaleGpus) ?? "";
     }
 
     /// <summary>Detecta as GPUs em segundo plano e mostra o resultado nas DUAS numerações:

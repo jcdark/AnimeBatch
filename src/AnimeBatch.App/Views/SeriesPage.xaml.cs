@@ -25,13 +25,8 @@ public partial class ConversionRowViewModel : ObservableObject
     public string Duracao => TimeSpan.FromSeconds(_record.DurationSeconds).ToString(@"hh\:mm\:ss");
     public string Tamanho => FormatSize(_record.SizeBytes);
 
-    internal static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1L << 30 => $"{bytes / (double)(1L << 30):F2} GB",
-        >= 1L << 20 => $"{bytes / (double)(1L << 20):F1} MB",
-        >= 1L << 10 => $"{bytes / (double)(1L << 10):F1} KB",
-        _ => $"{bytes} B",
-    };
+    /// <summary>Mantido como membro da VM (usado aqui); a lógica vive no Ui compartilhado.</summary>
+    internal static string FormatSize(long bytes) => Ui.FormatSize(bytes);
 }
 
 /// <summary>Item do resultado de busca do TMDB, com miniatura pronta pra exibição.</summary>
@@ -56,7 +51,7 @@ public sealed partial class SeriesPage : Page
     {
         InitializeComponent();
         Localize();
-        Load();
+        Ui.Safe(LoadAsync, ex => EditorStatus.Text = $"✗ {ex.Message}");
     }
 
     private void Localize()
@@ -81,9 +76,9 @@ public sealed partial class SeriesPage : Page
 
     // ---------- carregamento ----------
 
-    private void Load()
+    private async Task LoadAsync()
     {
-        _series = AppServices.Series.GetAllAsync().GetAwaiter().GetResult();
+        _series = await AppServices.Series.GetAllAsync();
 
         _suppressComboEvents = true;
         var items = new List<string> { AppServices.Localizer.T("series.selectorNew") };
@@ -107,7 +102,7 @@ public sealed partial class SeriesPage : Page
         FillEditor(current);
         _ = LoadPosterAsync(current);
         LoadOverview(current);
-        LoadHistory(current);
+        Ui.Safe(() => LoadHistoryAsync(current), ex => EditorStatus.Text = $"✗ {ex.Message}");
     }
 
     private void FillEditor(Series? s)
@@ -159,7 +154,7 @@ public sealed partial class SeriesPage : Page
         {
             var saved = await AppServices.Series.UpsertAsync(series);
             EditorStatus.Text = t.T("series.saved", saved.Name);
-            Load();
+            await LoadAsync();
             SeriesCombo.SelectedItem = saved.Name;
         }
         catch (Exception ex)
@@ -178,14 +173,14 @@ public sealed partial class SeriesPage : Page
 
         await AppServices.Series.DeleteAsync(series.Id);
         EditorStatus.Text = AppServices.Localizer.T("series.deleted", series.Name);
-        Load();
+        await LoadAsync();
     }
 
     // ---------- TMDB ----------
 
     private async void BtnTmdb_Click(object sender, RoutedEventArgs e)
     {
-        var tmdb = AppServices.GetTmdb();
+        var tmdb = await AppServices.GetTmdbAsync();
         if (tmdb is null)
         {
             EditorStatus.Text = AppServices.Localizer.T("series.tmdbNoKey");
@@ -357,7 +352,7 @@ public sealed partial class SeriesPage : Page
         {
             if (!File.Exists(posterFile))
             {
-                var tmdb = AppServices.GetTmdb();
+                var tmdb = await AppServices.GetTmdbAsync();
                 if (tmdb is null)
                 {
                     NoImageLabel.Text = t.T("series.noImage");
@@ -394,9 +389,9 @@ public sealed partial class SeriesPage : Page
             : series.Overview;
     }
 
-    private void LoadHistory(Series? series)
+    private async Task LoadHistoryAsync(Series? series)
     {
-        var records = AppServices.Conversions.GetBySeriesAsync(series?.Id).GetAwaiter().GetResult();
+        var records = await AppServices.Conversions.GetBySeriesAsync(series?.Id);
         HistoryList.ItemsSource = records.Select(r => new ConversionRowViewModel(r)).ToList();
         HistoryEmpty.Text = AppServices.Localizer.T("series.history.empty");
         HistoryEmpty.Visibility = records.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
