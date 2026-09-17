@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AnimeBatch.App/AnimeBatch.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/AnimeBatch.Core/AnimeBatch.Core.csproj" />
+    <Project Path="src/AnimeBatch.Tests/AnimeBatch.Tests.csproj" />
+  </Folder>
+</Solution>

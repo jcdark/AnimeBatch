@@ -1,0 +1,69 @@
+<Page
+    x:Class="AnimeBatch.App.Views.QueuePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:AnimeBatch.App.Views">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TitleText" FontSize="24" FontWeight="SemiBold" />
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="BtnStart" Click="BtnStart_Click" Style="{StaticResource AccentButtonStyle}" />
+            <Button x:Name="BtnPause" Click="BtnPause_Click" IsEnabled="False" />
+            <Button x:Name="BtnStop" Click="BtnStop_Click" IsEnabled="False" />
+            <Button x:Name="BtnUp" Click="BtnUp_Click" />
+            <Button x:Name="BtnDown" Click="BtnDown_Click" />
+            <Button x:Name="BtnTop" Click="BtnTop_Click" />
+            <Button x:Name="BtnRemove" Click="BtnRemove_Click" />
+            <Button x:Name="BtnClear" Click="BtnClear_Click" />
+            <CheckBox x:Name="ChkAutoRemove" VerticalAlignment="Center" Checked="ChkAutoRemove_Changed"
+                      Unchecked="ChkAutoRemove_Changed" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <InfoBar x:Name="Info" IsOpen="False" IsClosable="True" Severity="Informational" />
+            <ListView x:Name="JobsList" SelectionMode="Single" Margin="0,8,0,0">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:JobRowViewModel">
+                        <Grid Padding="8,6" ColumnSpacing="10" Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="30" />
+                                <ColumnDefinition Width="3*" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="60" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="190" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind Order, Mode=OneWay}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{x:Bind SourceFileName, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind ErrorLabel, Mode=OneWay}" FontSize="11"
+                                           Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                           Visibility="{x:Bind ErrorVisibility, Mode=OneWay}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="{x:Bind StateLabel, Mode=OneWay}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="3" Text="{x:Bind ItemsSummary, Mode=OneWay}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="4" Text="{x:Bind CodecLabel, Mode=OneWay}" VerticalAlignment="Center" FontSize="12" />
+                            <TextBlock Grid.Column="5" Text="{x:Bind UpscaleLabel, Mode=OneWay}" VerticalAlignment="Center" FontSize="12" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="6" Text="{x:Bind CreatedAtLabel, Mode=OneWay}" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />
+                            <Button Grid.Column="7" MinWidth="0" Padding="6,2" Content="✎" Margin="0,0,4,0"
+                                    VerticalAlignment="Center" Click="EditJob_Click" Tag="{x:Bind}" />
+                            <Button Grid.Column="8" MinWidth="0" Padding="6,2" Content="✕"
+                                    VerticalAlignment="Center" Click="RemoveRow_Click" Tag="{x:Bind}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </StackPanel>
+    </Grid>
+</Page>

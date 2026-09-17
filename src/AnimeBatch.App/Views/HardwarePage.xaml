@@ -1,0 +1,49 @@
+<Page
+    x:Class="AnimeBatch.App.Views.HardwarePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:AnimeBatch.App.Views">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TitleText" Text="Hardware (GPU)" FontSize="24" FontWeight="SemiBold" />
+
+        <TextBlock Grid.Row="1" x:Name="HintText" FontSize="12" Foreground="Gray"
+                   TextWrapping="Wrap" MaxWidth="760" HorizontalAlignment="Left" />
+
+        <ItemsControl Grid.Row="2" x:Name="CardsList">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:GpuRowViewModel">
+                    <Border Padding="12,10" CornerRadius="6" Margin="0,0,0,8"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1" MaxWidth="760" HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="20">
+                            <StackPanel VerticalAlignment="Center" MaxWidth="460">
+                                <TextBlock Text="{x:Bind NameLabel}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{x:Bind MemoryLabel}" FontSize="12" Foreground="Gray" />
+                            </StackPanel>
+                            <ComboBox MinWidth="170" VerticalAlignment="Center"
+                                      ItemsSource="{x:Bind WorkerOptions}"
+                                      SelectedIndex="{x:Bind WorkersIndex, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Grid.Row="3" x:Name="NoneText" Visibility="Collapsed" Foreground="Gray" />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="BtnSave" Click="BtnSave_Click" Style="{StaticResource AccentButtonStyle}" />
+            <Button x:Name="BtnAuto" Click="BtnAuto_Click" />
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12" Foreground="Gray" />
+        </StackPanel>
+    </Grid>
+</Page>

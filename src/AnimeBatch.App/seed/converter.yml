@@ -1,0 +1,79 @@
+- name: "BLACK TORCH"
+  data:
+    min: 500
+    max: 1800
+    end: 900
+
+- name: "Clevatess"
+  data:
+    min: 500
+    max: 2200
+    end: 900
+
+- name: "Trapped in a Dating Sim： The World of Otome Games Is Tough for Mobs"
+  data:
+    min: 450
+    max: 1500
+    end: 2500
+
+- name: "Hanaori-san Still Wants to Fight in the Next Life"
+  data:
+    min: 550
+    max: 1800
+    end: 900
+
+- name: "The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You"
+  data:
+    min: 400
+    max: 1200
+    end: 1800
+
+- name: "Tomb Raider King"
+  data:
+    min: 500
+    max: 2000
+    end: 1800
+
+- name: "Welcome to Demon School! Iruma-kun"
+  data:
+    min: 5050
+    max: 2500
+    end: 1700
+
+- name: "Saint Seiya"
+  data:
+    min: 1100
+    max: 2800
+    end: 1800
+
+- name: "KAIJU GIRL CARAMELISE"
+  data:
+    min: 450
+    max: 1900
+    end: 900
+
+- name: "Saga of Tanya the Evil"
+  data:
+    min: 500
+    max: 2000
+    end: 1800
+
+- name: "Magilumiere_ Companhia Das Garotas Mágicas"
+  data:
+    min: 450
+    max: 1500
+    end: 1500
+
+- name: "De Caipira a Mestre Espadachim"
+  data:
+    min: 450
+    max: 1300
+    end: 800
+
+- name: "Welcome to Demon School! Iruma-kun"
+  data:
+    min: 550
+    max: 2500
+    end: 1700
+
+

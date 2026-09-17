@@ -1,0 +1,42 @@
+<Window
+    x:Class="AnimeBatch.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="AnimeBatch V0.26">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <NavigationView Grid.Row="0" x:Name="Nav"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        OpenPaneLength="180"
+                        SelectionChanged="Nav_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="NavQueue" Tag="queue" Icon="List" />
+                <NavigationViewItem x:Name="NavEpisodes" Tag="episodes" Icon="Video" />
+                <NavigationViewItem x:Name="NavEncodes" Tag="encodes" Icon="Folder" />
+                <NavigationViewItem x:Name="NavHardware" Tag="hardware">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE772;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="NavSeries" Tag="series" Icon="Library" />
+                <NavigationViewItem x:Name="NavSettings" Tag="settings" Icon="Setting" />
+            </NavigationView.MenuItems>
+
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+
+        <!-- Rodapé: estatísticas vivas durante a conversão -->
+        <Border Grid.Row="1" BorderThickness="0,1,0,0"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                Padding="16,6">
+            <TextBlock x:Name="FooterText" FontSize="12" TextTrimming="CharacterEllipsis" />
+        </Border>
+    </Grid>
+</Window>

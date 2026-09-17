@@ -1,0 +1,19 @@
+# Build
+bin/
+obj/
+.vs/
+*.user
+
+# Binários externos embutidos (populados por scripts/copiá-los manualmente; não versionar ~500MB)
+tools/
+data/*.db*
+logs/
+saida/
+
+# IDE
+.idea/
+dist/
+
+# Agente/IDE local
+data/posters/
+.zcode/

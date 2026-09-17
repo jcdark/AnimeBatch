@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Exe com nome versionado (AnimeBatchV0.1.exe): os sidecars .deps/.runtimeconfig
+         precisam casar com o nome do exe, então a versão entra no AssemblyName,
+         não numa renomeação pós-publish. Version PRECISA vir antes do AssemblyName. -->
+    <!-- Version curto (0.3) → exe AnimeBatchV0.28.exe. Nas próximas versões, subir aqui. -->
+    <Version>0.32</Version>
+    <AssemblyName>AnimeBatchV$(Version)</AssemblyName>
+    <!-- O pacote ONNX Runtime DirectML entrega o mesmo DirectML.dll por dois caminhos
+         (NuGet nativo e MsixContent do WinUI); é o MESMO binário, então deixa passar. -->
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>AnimeBatch.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <!-- App desempacotado: exe portátil, sem MSIX; runtime do Windows App SDK embarcado -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <DefaultLanguage>pt-BR</DefaultLanguage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.*" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.*" />
+    <PackageReference Include="System.Windows.Extensions" Version="9.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AnimeBatch.Core\AnimeBatch.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- YML legado embutido como seed: importado automaticamente no 1º boot (banco vazio) -->
+    <Content Include="seed\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Arquivos de tradução (idiomas aparecem no seletor de Configurações) -->
+    <Content Include="i18n\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- O publish do WinUI 3 não copia o .pri do app (onde vai o XAML compilado) — sem ele o
+       app morre na inicialização com XamlParseException. Copia manualmente do bin. -->
+  <Target Name="CopyAppPriToPublishDir" AfterTargets="Publish">
+    <Copy SourceFiles="$(TargetDir)$(TargetName).pri"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(TargetDir)$(TargetName).pri')" />
+  </Target>
+
+</Project>

@@ -1,0 +1,58 @@
+<Page
+    x:Class="AnimeBatch.App.Views.EncodesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TitleText" FontSize="24" FontWeight="SemiBold" />
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+            <ComboBox x:Name="CmbCodec" MinWidth="260" SelectionChanged="CmbCodec_SelectionChanged" />
+            <Button x:Name="BtnSave" Click="BtnSave_Click" Style="{StaticResource AccentButtonStyle}" />
+            <TextBlock x:Name="SaveStatus" VerticalAlignment="Center" Foreground="Gray" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="2">
+            <StackPanel Spacing="14" MaxWidth="680" HorizontalAlignment="Left">
+                <NumberBox x:Name="NumPreset" SpinButtonPlacementMode="Compact" SmallChange="1" />
+
+                <RadioButtons x:Name="RbMode" SelectionChanged="RbMode_SelectionChanged" />
+
+                <StackPanel x:Name="CqPanel" Spacing="4">
+                    <TextBlock x:Name="CqLabel" FontSize="14" />
+                    <Slider x:Name="SldCq" Minimum="0" Maximum="63" Value="22" StepFrequency="1"
+                            ValueChanged="SldCq_ValueChanged" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="CqEndHigh" FontSize="11" Foreground="Gray" />
+                        <TextBlock Grid.Column="2" x:Name="CqEndLow" FontSize="11" Foreground="Gray" />
+                    </Grid>
+                </StackPanel>
+
+                <TextBlock x:Name="BitrateHint" FontSize="12" Foreground="Gray"
+                           TextWrapping="Wrap" Visibility="Collapsed" />
+
+                <CheckBox x:Name="ChkMultipass" />
+                <CheckBox x:Name="ChkTurbo" />
+                <CheckBox x:Name="ChkFast" />
+                <CheckBox x:Name="ChkBoost" />
+
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <ComboBox x:Name="CmbTune" MinWidth="200" Header="Ajuste do Conversor" />
+                    <ComboBox x:Name="CmbProfile" MinWidth="200" Header="Perfil do Conversor" />
+                    <ComboBox x:Name="CmbLevel" MinWidth="160" Header="Nível do Conversor" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>
