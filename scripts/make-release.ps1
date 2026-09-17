@@ -30,6 +30,22 @@ if (-not (Test-Path (Join-Path $out "AnimeBatchV$ReleaseVersion.pri"))) {
 robocopy (Join-Path $root "tools") (Join-Path $out "tools") /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy tools falhou ($LASTEXITCODE)" }
 
+# O publish arrasta ~80 pastas de idioma com .mui do runtime WinUI (traducoes de
+# mensagem do Microsoft.UI.Xaml que o app nao usa - a UI tem i18n propria em i18n\).
+# Fica so pt-BR (default) e en-us; qualquer outro idioma cai no fallback do MUI.
+# A guarda e o parse como CultureInfo: pastas do app (tools, data, seed, i18n,
+# runtimes, NpuDetect, Microsoft.UI.Xaml...) nao parseiam e ficam intocadas.
+$keepLangs = @("pt-BR", "en-us")
+$pruned = 0
+Get-ChildItem $out -Directory | ForEach-Object {
+    if ($keepLangs -contains $_.Name) { return }
+    try { New-Object System.Globalization.CultureInfo($_.Name) | Out-Null }
+    catch { return }
+    Remove-Item $_.FullName -Recurse -Force
+    $pruned++
+}
+Write-Host "Idiomas do runtime WinUI removidos: $pruned (mantidos pt-BR e en-us)"
+
 Write-Host ""
 Write-Host "OK: $out\AnimeBatchV$ReleaseVersion.exe"
 Write-Host "Teste antes de distribuir: abra o exe e veja data\crash.log em caso de problema."
