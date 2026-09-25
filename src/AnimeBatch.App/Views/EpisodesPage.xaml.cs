@@ -604,7 +604,7 @@ public sealed partial class EpisodesPage : Page
         {
             var duration = EffectiveDuration(_selected!);
             if (!TryParseTime(start.Text, out var startSeconds) ||
-                startSeconds <= 0 || startSeconds >= duration ||
+                startSeconds < 0 || startSeconds >= duration ||
                 Chapters().Any(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001))
             {
                 args.Cancel = true;
@@ -739,7 +739,7 @@ public sealed partial class EpisodesPage : Page
             // SÓ tempo inicial: o final vira o início do próximo capítulo (último = fim do vídeo)
             var duration = EffectiveDuration(_selected!);
             if (!TryParseTime(start.Text, out var startSeconds) ||
-                startSeconds <= 0 || startSeconds >= duration ||
+                startSeconds < 0 || startSeconds >= duration ||
                 Chapters().Any(c => Math.Abs(c.StartSeconds - startSeconds) < 0.001))
             {
                 args.Cancel = true;
