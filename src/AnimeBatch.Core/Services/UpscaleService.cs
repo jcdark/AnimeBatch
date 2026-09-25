@@ -34,7 +34,10 @@ public record UpscalePartRequest(
     /// <summary>Largura da origem — obrigatória no motor ONNX (o pipe cru precisa das dimensões exatas).</summary>
     int SourceWidth = 0,
     /// <summary>Pasta tools\models-onnx com os modelos AnimeJaNai (motor ONNX).</summary>
-    string? OnnxModelsDir = null);
+    string? OnnxModelsDir = null,
+    /// <summary>Taxa de frames exata do ffprobe ("24000/1001") para -r/-framerate — o double
+    /// arredonda 23.976… e o resíduo vira drift de sincronia no remontar. "" usa o decimal.</summary>
+    string FpsRatio = "");
 
 /// <summary>
 /// Estágio de upscaling (M4): extrai frames do trecho com ffmpeg (PNG), amplia com
@@ -94,26 +97,59 @@ public class UpscaleService : Queueing.IUpscaleStage
         return Path.Combine(dir, modelCode == "realesrgan" ? "models" : "models-se");
     }
 
+    /// <summary>Taxa para -r/-framerate: prefere a fração exata do ffprobe ("24000/1001") —
+    /// o decimal "23.976" deixa um resíduo de ~1,4 ms por 24 min no remontar por frames.</summary>
+    public static string RateArg(double fps, string fpsRatio) =>
+        string.IsNullOrWhiteSpace(fpsRatio) ? fps.ToString("0.####", CultureInfo.InvariantCulture) : fpsRatio.Trim();
+
     /// <summary>
-    /// Extrai os frames de um chunk em PNG (%08d.png). IMPORTANTE: -fps_mode cfr força taxa
-    /// CONSTANTE — fontes VFR (comuns em rips de anime) têm timestamps irregulares, e o
-    /// remontar a taxa fixa deslizava contra o áudio progressivamente. O CFR reamostra no
-    /// tempo (duplica/descarta frames), então cada chunk dura exatamente o trecho de origem.
+    /// Plano de chunks por CONTAGEM DE FRAMES — a correção do desync A/V. O corte antigo por
+    /// tempo (-t 30) quantizava pelo fim do frame: a 23.976 fps rendia 719 frames (29,9958s)
+    /// por chunk, e o remontar a -framerate fixa "acelerava" o vídeo ~4,2 ms POR CHUNK contra
+    /// o áudio (cortado por tempo real na origem) — 24 min = 48 chunks ≈ 200 ms de desync, com
+    /// o erro sempre no mesmo sentido porque a parte fracionária de 30×fps é constante. Em
+    /// fps inteiro o erro era zero — por isso os testes antigos (24/25/30) não pegavam.
+    /// Cortando por -frames:v, cada chunk rende exatamente o mesmo número de frames e a
+    /// duração do vídeo (framesTotal/fps) casa com o corte do áudio. Offset em SEGUNDOS do
+    /// frame inicial (k×chunkFrames/fps, calculado no double — erro &lt;&lt; 1 µs, muito abaixo
+    /// da duração de um frame).
+    /// </summary>
+    public static IReadOnlyList<(double StartOffsetSeconds, int FrameCount)> PlanFrameChunks(double totalSeconds, double fps)
+    {
+        var totalFrames = Math.Max(1, (long)Math.Round(totalSeconds * fps));
+        var chunkFrames = Math.Max(1, (int)Math.Round(ChunkSeconds * fps));
+        var chunkCount = (int)Math.Ceiling(totalFrames / (double)chunkFrames);
+        var plan = new List<(double, int)>(chunkCount);
+        for (var k = 0; k < chunkCount; k++)
+        {
+            var frames = (int)Math.Min(chunkFrames, totalFrames - (long)k * chunkFrames);
+            plan.Add((k * (double)chunkFrames / fps, frames));
+        }
+        return plan;
+    }
+
+    /// <summary>
+    /// Extrai os frames de um chunk em PNG (%08d.png), cortando por CONTAGEM DE FRAMES
+    /// (-frames:v, plano de PlanFrameChunks) — cortar por tempo (-t) quantizava pelo fim do
+    /// frame e o erro por chunk acumulava contra o áudio (causa do desync A/V).
+    /// IMPORTANTE: -fps_mode cfr força taxa CONSTANTE — fontes VFR (comuns em rips de anime)
+    /// têm timestamps irregulares, e o remontar a taxa fixa deslizava contra o áudio. O CFR
+    /// reamostra no tempo (duplica/descarta frames) e o frame grid do plano casa com ele.
     /// -progress pipe:1 alimenta o rodapé durante a extração.
     /// </summary>
-    public static string[] BuildExtractArgs(string sourcePath, double startSeconds, double durationSeconds, string framesDir, double fps)
+    public static string[] BuildExtractArgs(string sourcePath, double startSeconds, int frameCount, string framesDir, string rateArg)
     {
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin", "-y" };
         if (startSeconds > 0)
-            args.AddRange(["-ss", startSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
+            args.AddRange(["-ss", startSeconds.ToString("0.##########", CultureInfo.InvariantCulture)]);
         args.AddRange(["-i", sourcePath]);
-        if (durationSeconds > 0)
-            args.AddRange(["-t", durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
+        if (frameCount > 0)
+            args.AddRange(["-frames:v", frameCount.ToString(CultureInfo.InvariantCulture)]);
         args.AddRange(
         [
             "-map", "0:v:0",
             "-fps_mode", "cfr",
-            "-r", fps.ToString("0.####", CultureInfo.InvariantCulture),
+            "-r", rateArg,
             "-start_number", "0",
             "-pix_fmt", "rgb24",
             "-progress", "pipe:1", "-nostats",
@@ -156,14 +192,14 @@ public class UpscaleService : Queueing.IUpscaleStage
     /// targetHeight 0 pula o filtro de escala (altura do modelo já é o alvo).
     /// </summary>
     public static string[] BuildAssembleArgs(
-        string framesDir, double fps, string sourcePath, string outputPath,
+        string framesDir, string rateArg, string sourcePath, string outputPath,
         bool losslessIntermediate, bool copyAudio, bool keepChapters, bool copySubtitles,
         int targetHeight, double? durationSeconds)
     {
         var args = new List<string>
         {
             "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-            "-framerate", fps.ToString("0.####", CultureInfo.InvariantCulture),
+            "-framerate", rateArg,
             "-i", Path.Combine(framesDir, "%08d.png"),
             "-i", sourcePath,
             "-map", "0:v:0",
@@ -214,23 +250,23 @@ public class UpscaleService : Queueing.IUpscaleStage
 
     /// <summary>
     /// Extração de um chunk para STDOUT CRU (motor ONNX): rawvideo rgb24 em vez de PNG —
-    /// elimina o gargalo de compressão do pipeline ncnn. -fps_mode cfr mantém o sync em
-    /// fontes VFR (mesma regra do BuildExtractArgs). SEM -progress: a stdout é o vídeo;
-    /// o progresso conta por bytes de frame lidos.
+    /// elimina o gargalo de compressão do pipeline ncnn. Corte por -frames:v (mesma regra
+    /// do BuildExtractArgs) e -fps_mode cfr para manter o sync em fontes VFR. SEM -progress:
+    /// a stdout é o vídeo; o progresso conta por bytes de frame lidos.
     /// </summary>
-    public static string[] BuildRawExtractArgs(string sourcePath, double startSeconds, double durationSeconds, double fps)
+    public static string[] BuildRawExtractArgs(string sourcePath, double startSeconds, int frameCount, string rateArg)
     {
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin", "-y" };
         if (startSeconds > 0)
-            args.AddRange(["-ss", startSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
+            args.AddRange(["-ss", startSeconds.ToString("0.##########", CultureInfo.InvariantCulture)]);
         args.AddRange(["-i", sourcePath]);
-        if (durationSeconds > 0)
-            args.AddRange(["-t", durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)]);
+        if (frameCount > 0)
+            args.AddRange(["-frames:v", frameCount.ToString(CultureInfo.InvariantCulture)]);
         args.AddRange(
         [
             "-map", "0:v:0",
             "-fps_mode", "cfr",
-            "-r", fps.ToString("0.####", CultureInfo.InvariantCulture),
+            "-r", rateArg,
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
             "pipe:1",
@@ -243,7 +279,7 @@ public class UpscaleService : Queueing.IUpscaleStage
     /// dimensões FINAIS após os passes do modelo). Sem -t: o EOF do pipe fecha o segmento
     /// com o número exato de frames (e áudio não entra aqui — é do mux final).
     /// </summary>
-    public static string[] BuildRawAssembleArgs(int width, int height, double fps, string outputPath, bool losslessIntermediate, int targetHeight)
+    public static string[] BuildRawAssembleArgs(int width, int height, string rateArg, string outputPath, bool losslessIntermediate, int targetHeight)
     {
         var args = new List<string>
         {
@@ -251,7 +287,7 @@ public class UpscaleService : Queueing.IUpscaleStage
             "-f", "rawvideo",
             "-pixel_format", "rgb24",
             "-video_size", $"{width}x{height}",
-            "-framerate", fps.ToString("0.####", CultureInfo.InvariantCulture),
+            "-framerate", rateArg,
             "-i", "pipe:0",
         };
 
@@ -340,8 +376,11 @@ public class UpscaleService : Queueing.IUpscaleStage
 
         // ffprobe pode devolver fps 0 em arquivos exóticos — sem framerate o remontar não abre
         var fps = req.SourceFps > 0 ? req.SourceFps : 23.976;
+        var rate = RateArg(fps, req.FpsRatio);
         var total = Math.Max(0.001, req.TotalSeconds);
-        var chunkCount = Math.Max(1, (int)Math.Ceiling(total / ChunkSeconds));
+        var chunks = PlanFrameChunks(total, fps);
+        var chunkCount = chunks.Count;
+        var videoDuration = chunks.Sum(c => c.FrameCount) / fps; // duração EXATA do vídeo remontado
         var plan = SelectPlan(req.SourceHeight, req.TargetHeight);
 
         if (plan.NeedsModel && !File.Exists(req.UpscalerExePath))
@@ -384,8 +423,9 @@ public class UpscaleService : Queueing.IUpscaleStage
                         return;
                     stageCts.Token.ThrowIfCancellationRequested();
 
-                    var chunkStart = req.StartSeconds + chunk * (double)ChunkSeconds;
-                    var chunkDuration = Math.Min(ChunkSeconds, total - chunk * (double)ChunkSeconds);
+                    var (chunkOffset, chunkFrames) = chunks[chunk];
+                    var chunkStart = req.StartSeconds + chunkOffset;
+                    var chunkDuration = chunkFrames / fps; // "segundos de vídeo" do chunk (progresso)
                     var framesSrc = Path.Combine(segmentsDir, $"c{chunk:000}_src");
                     var framesOut = Path.Combine(segmentsDir, $"c{chunk:000}_out");
                     CleanDir(framesSrc);
@@ -401,7 +441,7 @@ public class UpscaleService : Queueing.IUpscaleStage
                     var extractFps = 0.0;
                     var extractSpeed = 0.0;
                     await RunProcessAsync(_ffmpeg,
-                        BuildExtractArgs(req.SourcePath, chunkStart, chunkDuration, framesSrc, fps), stageCts.Token,
+                        BuildExtractArgs(req.SourcePath, chunkStart, chunkFrames, framesSrc, rate), stageCts.Token,
                             line =>
                             {
                                 if (line.StartsWith("fps=", StringComparison.Ordinal) &&
@@ -460,7 +500,7 @@ public class UpscaleService : Queueing.IUpscaleStage
                         var assembleHeight = plan.TargetHeight == req.SourceHeight * plan.ModelScale ? 0 : plan.TargetHeight;
                         var segmentPath = Path.Combine(segmentsDir, $"seg_{chunk:0000}.mkv");
                         await RunProcessAsync(_ffmpeg,
-                            BuildAssembleArgs(framesForAssemble, fps, req.SourcePath, segmentPath,
+                            BuildAssembleArgs(framesForAssemble, rate, req.SourcePath, segmentPath,
                                 req.LosslessIntermediate, copyAudio: false, keepChapters: false,
                                 copySubtitles: false, assembleHeight, durationSeconds: null),
                             stageCts.Token, null).ConfigureAwait(false);
@@ -496,7 +536,7 @@ public class UpscaleService : Queueing.IUpscaleStage
             }
 
             // ---- concatenação dos segmentos (-c copy) + mux do áudio/legendas ----
-            await ConcatAndMuxAsync(req, segmentPaths, segmentsDir, total, ct).ConfigureAwait(false);
+            await ConcatAndMuxAsync(req, segmentPaths, segmentsDir, videoDuration, ct).ConfigureAwait(false);
             Report(1.0, 0, 0);
         }
         finally
@@ -506,9 +546,11 @@ public class UpscaleService : Queueing.IUpscaleStage
     }
 
     /// <summary>Finalização comum aos motores: emenda os segmentos (-c copy) e muxa o
-    /// áudio/legendas/capítulos da origem no produto do estágio.</summary>
+    /// áudio/legendas/capítulos da origem no produto do estágio. No WithEncode o áudio é
+    /// cortado com -t = videoDuration (duração EXATA do vídeo remontado, framesTotal/fps) —
+    /// é o que mantém os dois streams no mesmo relógio.</summary>
     private async Task ConcatAndMuxAsync(
-        UpscalePartRequest req, string[] segmentPaths, string segmentsDir, double total, CancellationToken ct)
+        UpscalePartRequest req, string[] segmentPaths, string segmentsDir, double videoDuration, CancellationToken ct)
     {
         var segments = new List<string>(segmentPaths);
         var listFile = Path.Combine(segmentsDir, "concat.txt");
@@ -520,7 +562,7 @@ public class UpscaleService : Queueing.IUpscaleStage
         await RunProcessAsync(_ffmpeg,
             BuildFinalMuxArgs(concatPath, req.SourcePath, req.OutputPath,
                 startSeconds: onlyMode ? null : req.StartSeconds,
-                durationSeconds: onlyMode ? null : total,
+                durationSeconds: onlyMode ? null : videoDuration,
                 copyAudio: req.CopyAudio, keepChapters: req.KeepChapters, copySubtitles: req.CopySubtitles),
             ct, null).ConfigureAwait(false);
     }
@@ -547,8 +589,11 @@ public class UpscaleService : Queueing.IUpscaleStage
         Directory.CreateDirectory(segmentsDir);
 
         var fps = req.SourceFps > 0 ? req.SourceFps : 23.976;
+        var rate = RateArg(fps, req.FpsRatio);
         var total = Math.Max(0.001, req.TotalSeconds);
-        var chunkCount = Math.Max(1, (int)Math.Ceiling(total / ChunkSeconds));
+        var chunks = PlanFrameChunks(total, fps);
+        var chunkCount = chunks.Count;
+        var videoDuration = chunks.Sum(c => c.FrameCount) / fps; // duração EXATA do vídeo remontado
         var plan = SelectPlan(req.SourceHeight, req.TargetHeight);
 
         var modelFile = OnnxUpscaleService.PickModelFile(req.OnnxModelsDir!, req.SourceHeight);
@@ -644,13 +689,13 @@ public class UpscaleService : Queueing.IUpscaleStage
                         return;
                     stageCts.Token.ThrowIfCancellationRequested();
 
-                    var chunkStart = req.StartSeconds + chunk * (double)ChunkSeconds;
-                    var chunkDuration = Math.Min(ChunkSeconds, total - chunk * (double)ChunkSeconds);
+                    var (chunkOffset, chunkFrames) = chunks[chunk];
+                    var chunkStart = req.StartSeconds + chunkOffset;
                     var segmentPath = Path.Combine(segmentsDir, $"seg_{chunk:0000}.mkv");
 
                     await ProcessChunkOnnxAsync(
-                        req, session, inputName, passGeoms, finalW, finalH, fps, assembleHeight,
-                        chunkStart, chunkDuration, segmentPath,
+                        req, session, inputName, passGeoms, finalW, finalH, rate, assembleHeight,
+                        chunkStart, chunkFrames, segmentPath,
                         srcBuf, workBuf, tensorBuf,
                         frames =>
                         {
@@ -696,7 +741,7 @@ public class UpscaleService : Queueing.IUpscaleStage
                 throw;
             }
 
-            await ConcatAndMuxAsync(req, segmentPaths, segmentsDir, total, ct).ConfigureAwait(false);
+            await ConcatAndMuxAsync(req, segmentPaths, segmentsDir, videoDuration, ct).ConfigureAwait(false);
             Report(1.0, 0, 0);
         }
         finally
@@ -726,19 +771,21 @@ public class UpscaleService : Queueing.IUpscaleStage
     }
 
     /// <summary>Processa UM chunk no motor ONNX: ffmpeg extrai → inferência frame a frame →
-    /// ffmpeg monta o segmento. Os dois processos e os buffers pertencem ao worker.</summary>
+    /// ffmpeg monta o segmento. Os dois processos e os buffers pertencem ao worker.
+    /// A extração corta por chunkFrames (-frames:v) e o EOF do pipe fecha o segmento —
+    /// o segmento rende exatamente chunkFrames frames.</summary>
     private async Task ProcessChunkOnnxAsync(
         UpscalePartRequest req,
         InferenceSession session, string inputName,
         IReadOnlyList<(int W, int H, int PadW, int PadH)> passGeoms,
-        int finalW, int finalH, double fps, int assembleHeight,
-        double chunkStart, double chunkDuration, string segmentPath,
+        int finalW, int finalH, string rateArg, int assembleHeight,
+        double chunkStart, int chunkFrames, string segmentPath,
         byte[] srcBuf, byte[] workBuf, float[] tensorBuf,
         Action<int> onFrames, CancellationToken ct)
     {
-        using var extract = StartProcess(_ffmpeg, BuildRawExtractArgs(req.SourcePath, chunkStart, chunkDuration, fps));
+        using var extract = StartProcess(_ffmpeg, BuildRawExtractArgs(req.SourcePath, chunkStart, chunkFrames, rateArg));
         using var assemble = StartProcess(_ffmpeg,
-            BuildRawAssembleArgs(finalW, finalH, fps, segmentPath, req.LosslessIntermediate, assembleHeight),
+            BuildRawAssembleArgs(finalW, finalH, rateArg, segmentPath, req.LosslessIntermediate, assembleHeight),
             redirectStdin: true);
 
         var stderrExtract = extract.StandardError.ReadToEndAsync(CancellationToken.None);

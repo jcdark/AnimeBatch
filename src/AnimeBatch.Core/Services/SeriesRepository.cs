@@ -75,4 +75,18 @@ public class SeriesRepository(Func<AnimeBatchDbContext> contextFactory)
         await db.SaveChangesAsync().ConfigureAwait(false);
         return true;
     }
+
+    /// <summary>Grava a capa da série em base64 (null = sem capa). O download do TMDB é
+    /// salvo no banco, não em arquivo de cache — sobrevive a reinstalação.</summary>
+    public async Task<bool> UpdateCoverAsync(int id, string? coverImageBase64)
+    {
+        await using var db = _factory();
+        var series = await db.Series.FirstOrDefaultAsync(s => s.Id == id).ConfigureAwait(false);
+        if (series is null)
+            return false;
+
+        series.CoverImageBase64 = coverImageBase64;
+        await db.SaveChangesAsync().ConfigureAwait(false);
+        return true;
+    }
 }

@@ -86,7 +86,7 @@ public static class DmlDeviceCalibration
     private static IReadOnlyList<GpuMemory> QueryGpuMemory(string smiExe)
     {
         var (stdout, ok) = ProcessRunner.Capture(smiExe,
-            "--query-gpu=index,name,memory.used --format=csv,noheader,nounits", 10_000);
+            new[] { "--query-gpu=index,name,memory.used", "--format=csv,noheader,nounits" }, 10_000);
         if (!ok)
             return [];
 

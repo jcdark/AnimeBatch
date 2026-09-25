@@ -43,8 +43,37 @@ public static class IntegrationHelpers
     public static void SkipIfNoOnnxModels() =>
         Skip.IfNot(HasFfmpeg && HasOnnxModels, "tools\\models-onnx não encontrado — rode scripts/setup-tools.ps1");
 
-    public static void SkipIfNoNvenc() =>
+    public static void SkipIfNoNvenc()
+    {
         Skip.IfNot(HasFfmpeg && HasNvidiaSmi, "sem nvidia-smi/NVENC nesta máquina — o teste precisa de uma placa NVIDIA");
+        Skip.IfNot(NvencDriverAceitaEncode(), "driver NVIDIA antigo demais para o ffmpeg de tools\\ " +
+            "(exige ≥ 610, NVENC API 13.1) — atualize o driver da placa para rodar encode NVENC");
+    }
+
+    private static bool? _nvencDriverOk;
+
+    /// <summary>Probe 1x por execução: 2 frames com av1_nvenc; o ffmpeg recusa driver velho
+    /// com "minimum required Nvidia driver" no stderr (que a exceção do RunFfmpeg carrega).
+    /// Mantém o teste PULANDO (não falhando) quando a placa existe mas o driver está velho —
+    /// sem esconder regressões reais. Este projeto só usa NVENC AV1, então av1_nvenc é o
+    /// probe certo: sem ele o caminho NVENC do app não roda de verdade.</summary>
+    private static bool NvencDriverAceitaEncode() => _nvencDriverOk ??= ProbeNvenc();
+
+    private static bool ProbeNvenc()
+    {
+        // Fonte lavfi direto no encoder: nenhum arquivo em disco e linha de comando
+        // 100% constante. A recusa de driver velho acontece na abertura do encoder,
+        // com qualquer entrada — o ffmpeg sai com erro e o stderr traz o motivo.
+        try
+        {
+            RunFfmpeg("-f lavfi -i testsrc2=size=320x240:rate=24:duration=1 -c:v av1_nvenc -f null -");
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return !ex.Message.Contains("minimum required Nvidia driver", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     /// <summary>Roda um ffmpeg de preparação (vídeo sintético lavfi); falha se sair com erro.</summary>
     public static void RunFfmpeg(string args)

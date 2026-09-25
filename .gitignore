@@ -17,3 +17,12 @@ dist/
 # Agente/IDE local
 data/posters/
 .zcode/
+
+# Ferramentas locais de agente/segurança
+.mimosa/
+.video_agent/
+.v2c/
+out/
+
+# Resultados de teste
+TestResults/

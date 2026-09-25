@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Pickers;
 
 namespace AnimeBatch.App.Views;
@@ -202,7 +203,12 @@ public sealed partial class SeriesPage : Page
     {
         var t = AppServices.Localizer;
 
-        var query = new TextBox { PlaceholderText = t.T("series.dialog.placeholder"), Text = prefill, MinWidth = 380 };
+        // Largura FIXA em 70% da janela: com muitos resultados o modal não pode
+        // crescer horizontalmente (quebrava o layout com as grades de posters).
+        var dlgWidth = Math.Max(480d, XamlRoot.Size.Width * 0.7);
+
+        var query = new TextBox { PlaceholderText = t.T("series.dialog.placeholder"), Text = prefill };
+        var idQuery = new TextBox { PlaceholderText = t.T("series.dialog.idPlaceholder"), Width = 180 };
         var results = new List<TmdbResultRow>();
         var resultsGrid = new GridView
         {
@@ -213,16 +219,20 @@ public sealed partial class SeriesPage : Page
         };
         var searchButton = new Button { Content = t.T("series.dialog.search") };
 
-        // Campo + botão Buscar na mesma linha, botão alinhado à direita
+        // Nome + ID TMDB + botão Buscar na mesma linha; ID preenchido tem prioridade
+        // (regra: buscar por um OU pelo outro).
         var searchRow = new Grid { ColumnSpacing = 8 };
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        searchRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetColumn(query, 0);
-        Grid.SetColumn(searchButton, 1);
+        Grid.SetColumn(idQuery, 1);
+        Grid.SetColumn(searchButton, 2);
         searchRow.Children.Add(query);
+        searchRow.Children.Add(idQuery);
         searchRow.Children.Add(searchButton);
 
-        var panel = new StackPanel { Spacing = 10, MinWidth = 520 };
+        var panel = new StackPanel { Spacing = 10, Width = dlgWidth - 50 };
         panel.Children.Add(searchRow);
         panel.Children.Add(resultsGrid);
 
@@ -236,7 +246,7 @@ public sealed partial class SeriesPage : Page
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = this.XamlRoot,
         };
-        dialog.Resources["ContentDialogMaxWidth"] = 900d;
+        dialog.Resources["ContentDialogMaxWidth"] = dlgWidth;
 
         TmdbSearchResult? selected = null;
 
@@ -248,20 +258,44 @@ public sealed partial class SeriesPage : Page
 
         async Task SearchAsync()
         {
-            if (string.IsNullOrWhiteSpace(query.Text))
+            var idText = idQuery.Text.Trim();
+            var name = query.Text.Trim();
+            if (idText.Length == 0 && name.Length == 0)
                 return;
+
+            // busca por ID tem prioridade quando o campo está preenchido
+            TmdbSearchResult? direct = null;
             var gen = ++searchGeneration;
             searchButton.IsEnabled = false;
             try
             {
-                var found = await tmdb.SearchTvAsync(query.Text.Trim());
-                if (gen != searchGeneration)
-                    return; // resposta atrasada de uma busca antiga — descarta
+                List<TmdbSearchResult> found;
+                if (idText.Length > 0)
+                {
+                    if (!int.TryParse(idText, out var id) || id <= 0)
+                    {
+                        EditorStatus.Text = t.T("series.dialog.invalidId");
+                        return;
+                    }
+                    direct = await tmdb.GetTvAsync(id);
+                    if (gen != searchGeneration)
+                        return; // resposta atrasada de uma busca antiga — descarta
+                    found = direct is null ? [] : [direct];
+                }
+                else
+                {
+                    found = await tmdb.SearchTvAsync(name);
+                    if (gen != searchGeneration)
+                        return;
+                }
+
                 results.Clear();
                 results.AddRange(found.Select(r => new TmdbResultRow(r)));
                 resultsGrid.ItemsSource = results;
                 resultsGrid.SelectedIndex = -1;
-                dialog.IsPrimaryButtonEnabled = false;
+                if (direct is not null)
+                    resultsGrid.SelectedIndex = 0; // ID: resultado único já vem selecionado
+                dialog.IsPrimaryButtonEnabled = direct is not null;
                 if (results.Count == 0)
                     EditorStatus.Text = t.T("series.tmdbNoResults");
             }
@@ -279,6 +313,11 @@ public sealed partial class SeriesPage : Page
 
         searchButton.Click += async (_, _) => await SearchAsync();
         query.KeyDown += (_, args) =>
+        {
+            if (args.Key == Windows.System.VirtualKey.Enter)
+                _ = SearchAsync();
+        };
+        idQuery.KeyDown += (_, args) =>
         {
             if (args.Key == Windows.System.VirtualKey.Enter)
                 _ = SearchAsync();
@@ -339,47 +378,78 @@ public sealed partial class SeriesPage : Page
     {
         PosterImage.Source = null;
         var t = AppServices.Localizer;
+        NoImageLabel.Text = t.T("series.noImage");
 
-        if (series?.TmdbId is null || string.IsNullOrEmpty(series.PosterPath))
+        if (series is null)
         {
-            NoImageLabel.Text = t.T("series.noImage");
             NoImageLabel.Visibility = Visibility.Visible;
             return;
         }
 
-        var posterFile = PosterCachePath(series.TmdbId.Value);
+        // Capa vem do BANCO (base64) — sobrevive a reinstalação; o TMDB só é acionado
+        // quando a série está vinculada mas ainda não tem capa gravada.
+        if (!string.IsNullOrEmpty(series.CoverImageBase64))
+        {
+            var cached = await ImageFromBase64Async(series.CoverImageBase64);
+            if (cached is not null)
+            {
+                NoImageLabel.Visibility = Visibility.Collapsed;
+                PosterImage.Source = cached;
+                return;
+            }
+        }
+
+        if (series.TmdbId is null || string.IsNullOrEmpty(series.PosterPath))
+        {
+            NoImageLabel.Visibility = Visibility.Visible;
+            return;
+        }
+
         try
         {
-            if (!File.Exists(posterFile))
+            var tmdb = await AppServices.GetTmdbAsync();
+            if (tmdb is null)
             {
-                var tmdb = await AppServices.GetTmdbAsync();
-                if (tmdb is null)
-                {
-                    NoImageLabel.Text = t.T("series.noImage");
-                    NoImageLabel.Visibility = Visibility.Visible;
-                    return;
-                }
-
-                Directory.CreateDirectory(Path.GetDirectoryName(posterFile)!);
-                var bytes = await tmdb.DownloadPosterAsync(series.PosterPath);
-                await File.WriteAllBytesAsync(posterFile, bytes);
+                NoImageLabel.Visibility = Visibility.Visible;
+                return;
             }
 
+            var bytes = await tmdb.DownloadPosterAsync(series.PosterPath);
+            var base64 = Convert.ToBase64String(bytes);
+            await AppServices.Series.UpdateCoverAsync(series.Id, base64);
+            series.CoverImageBase64 = base64; // reflete no objeto em cache da tela
+
+            var img = await ImageFromBase64Async(base64);
+            if (img is null)
+            {
+                NoImageLabel.Visibility = Visibility.Visible;
+                return;
+            }
             NoImageLabel.Visibility = Visibility.Collapsed;
-            PosterImage.Source = new BitmapImage(new Uri(posterFile));
+            PosterImage.Source = img;
         }
         catch (Exception ex)
         {
-            NoImageLabel.Text = t.T("series.noImage");
             NoImageLabel.Visibility = Visibility.Visible;
             EditorStatus.Text = $"✗ {ex.Message}";
         }
     }
 
-    private static string PosterCachePath(int tmdbId)
+    /// <summary>Decodifica base64 em BitmapImage; null se o conteúdo não é imagem válida.</summary>
+    private static async Task<BitmapImage?> ImageFromBase64Async(string base64)
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "data", "posters");
-        return Path.Combine(dir, $"{tmdbId}.jpg");
+        try
+        {
+            var bytes = Convert.FromBase64String(base64);
+            var img = new BitmapImage();
+            using var ms = new MemoryStream(bytes);
+            await img.SetSourceAsync(ms.AsRandomAccessStream());
+            return img;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void LoadOverview(Series? series)

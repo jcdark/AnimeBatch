@@ -1,5 +1,6 @@
 using AnimeBatch.App.Services;
 using AnimeBatch.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
@@ -21,15 +22,27 @@ public sealed partial class SettingsPage : Page
             FatalInfo.IsOpen = true;
         }
 
-        DbPathLabel.Text = $"Banco de dados: {AnimeBatch.Core.Data.AnimeBatchDbContext.DefaultDbPath()}";
+        UpdateDbInfo();
 
-        AddToolRow("ffmpeg.exe", AppServices.Tools.FfmpegPath, true);
-        AddToolRow("ffprobe.exe", AppServices.Tools.FfprobePath, true);
-        AddToolRow("mkvmerge.exe", AppServices.Tools.MkvMergePath, true);
-        AddToolRow("mkvextract.exe", AppServices.Tools.MkvExtractPath, true);
-        AddToolRow("HandBrakeCLI.exe", AppServices.Tools.HandBrakeCliPath, true);
-        AddToolRow("realcugan-ncnn-vulkan.exe", AppServices.Tools.RealCuganPath, false);
-        AddToolRow("realesrgan-ncnn-vulkan.exe", AppServices.Tools.RealesrganPath, false);
+        // Créditos das ferramentas embarcadas: projeto + site + papel (as exe já vêm no pacote)
+        AddCreditRow("FFmpeg / ffprobe", AppServices.Tools.FfmpegPath is not null && AppServices.Tools.FfprobePath is not null,
+            "settings.toolFfmpeg", "https://ffmpeg.org");
+        AddCreditRow("MKVToolNix (mkvmerge / mkvextract)", AppServices.Tools.MkvMergePath is not null && AppServices.Tools.MkvExtractPath is not null,
+            "settings.toolMkvtoolnix", "https://mkvtoolnix.download");
+        AddCreditRow("HandBrake (HandBrakeCLI)", AppServices.Tools.HandBrakeCliPath is not null,
+            "settings.toolHandbrake", "https://handbrake.fr");
+        AddCreditRow("SVT-AV1 (SvtAv1EncApp)", AppServices.Tools.SvtAv1EncAppPath is not null,
+            "settings.toolSvtav1", "https://gitlab.com/AOMediaCodec/SVT-AV1");
+        AddCreditRow("Av1an", AppServices.Tools.Av1anPath is not null,
+            "settings.toolAv1an", "https://github.com/rust-av/av1an");
+        AddCreditRow("VapourSynth (vspipe)", AppServices.Tools.VspipePath is not null,
+            "settings.toolVapoursynth", "https://www.vapoursynth.com");
+        AddCreditRow("Real-CUGAN (ncnn Vulkan)", AppServices.Tools.RealCuganPath is not null,
+            "settings.toolRealcugan", "https://github.com/nihui/realcugan-ncnn-vulkan");
+        AddCreditRow("Real-ESRGAN (ncnn Vulkan)", AppServices.Tools.RealesrganPath is not null,
+            "settings.toolRealesrgan", "https://github.com/xinntao/Real-ESRGAN");
+        AddCreditRow("AnimeJaNai (modelos ONNX)", AppServices.Tools.OnnxModelsDir is not null,
+            "settings.toolAnimejanai", "https://github.com/the-database/AnimeJaNai");
 
         // Idiomas disponíveis na pasta i18n do app
         var localizer = AppServices.Localizer;
@@ -155,7 +168,6 @@ public sealed partial class SettingsPage : Page
     {
         var t = AppServices.Localizer;
         TitleText.Text = t.T("settings.title");
-        ToolsHeader.Text = t.T("settings.tools");
         IntegrationsHeader.Text = t.T("settings.integrations");
         TmdbKeyBox.Header = t.T("settings.tmdbKeyHeader");
         TmdbKeyBox.PlaceholderText = t.T("settings.tmdbKeyPlaceholder");
@@ -173,6 +185,34 @@ public sealed partial class SettingsPage : Page
         UpscaleGpusBox.Header = t.T("settings.upscaleGpus");
         UpscaleGpusBox.PlaceholderText = "auto";
         UpscaleGpusHint.Text = t.T("settings.upscaleGpusHint");
+        DatabaseHeader.Text = t.T("settings.database");
+        BtnClearDb.Content = t.T("settings.dbClear");
+        DbClearHint.Text = t.T("settings.dbClearHint");
+        ToolsHeader.Text = t.T("settings.creditsHeader");
+        // (as descrições/link de cada ferramenta são aplicadas no ctor via AddCreditRow;
+        // ao trocar o idioma aqui, refaz as linhas para traduzir na hora)
+        if (ToolsPanel.Children.Count > 0)
+        {
+            ToolsPanel.Children.Clear();
+            AddCreditRow("FFmpeg / ffprobe", AppServices.Tools.FfmpegPath is not null && AppServices.Tools.FfprobePath is not null,
+                "settings.toolFfmpeg", "https://ffmpeg.org");
+            AddCreditRow("MKVToolNix (mkvmerge / mkvextract)", AppServices.Tools.MkvMergePath is not null && AppServices.Tools.MkvExtractPath is not null,
+                "settings.toolMkvtoolnix", "https://mkvtoolnix.download");
+            AddCreditRow("HandBrake (HandBrakeCLI)", AppServices.Tools.HandBrakeCliPath is not null,
+                "settings.toolHandbrake", "https://handbrake.fr");
+            AddCreditRow("SVT-AV1 (SvtAv1EncApp)", AppServices.Tools.SvtAv1EncAppPath is not null,
+                "settings.toolSvtav1", "https://gitlab.com/AOMediaCodec/SVT-AV1");
+            AddCreditRow("Av1an", AppServices.Tools.Av1anPath is not null,
+                "settings.toolAv1an", "https://github.com/rust-av/av1an");
+            AddCreditRow("VapourSynth (vspipe)", AppServices.Tools.VspipePath is not null,
+                "settings.toolVapoursynth", "https://www.vapoursynth.com");
+            AddCreditRow("Real-CUGAN (ncnn Vulkan)", AppServices.Tools.RealCuganPath is not null,
+                "settings.toolRealcugan", "https://github.com/nihui/realcugan-ncnn-vulkan");
+            AddCreditRow("Real-ESRGAN (ncnn Vulkan)", AppServices.Tools.RealesrganPath is not null,
+                "settings.toolRealesrgan", "https://github.com/xinntao/Real-ESRGAN");
+            AddCreditRow("AnimeJaNai (modelos ONNX)", AppServices.Tools.OnnxModelsDir is not null,
+                "settings.toolAnimejanai", "https://github.com/the-database/AnimeJaNai");
+        }
     }
 
     private async void BtnSaveTmdbKey_Click(object sender, RoutedEventArgs e)
@@ -201,19 +241,107 @@ public sealed partial class SettingsPage : Page
         (App.MainWindow as MainWindow)?.RefreshLanguage(); // menu lateral também troca na hora
     }
 
-    private void AddToolRow(string name, string? path, bool essential)
+    /// <summary>Linha de crédito: ✓/✗ de presença da exe, nome do projeto, papel dele no app
+    /// e link oficial (abre no navegador padrão). Sem caminhos de disco — os binários já vêm
+    /// no pacote; o que importa aqui é o crédito.</summary>
+    private void AddCreditRow(string name, bool present, string roleKey, string url)
     {
+        var t = AppServices.Localizer;
         var text = new TextBlock { TextWrapping = TextWrapping.Wrap };
-
-        text.Inlines.Add(new Run { Text = path is not null ? "✓ " : "✗ ", FontWeight = Microsoft.UI.Text.FontWeights.Bold });
+        text.Inlines.Add(new Run
+        {
+            Text = present ? "✓ " : "✗ ",
+            FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+        });
         text.Inlines.Add(new Run { Text = name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         text.Inlines.Add(new Run
         {
-            Text = path is not null ? $" — {path}" : essential ? " — AUSENTE (essencial)" : " — ausente (só upscale; opcional)",
+            Text = present
+                ? $" — {t.T(roleKey)}"
+                : $" — {t.T(roleKey)} ({t.T("settings.toolMissing")})",
         });
-        if (path is null && essential)
-            text.Foreground = new SolidColorBrush(Microsoft.UI.Colors.OrangeRed);
+        text.Inlines.Add(new Run { Text = "  " });
+        var link = new Hyperlink { NavigateUri = new Uri(url) };
+        link.Inlines.Add(new Run { Text = url });
+        link.Click += (_, _) => OpenUrl(url);
+        text.Inlines.Add(link);
+        if (!present)
+            text.Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray);
 
         ToolsPanel.Children.Add(text);
+    }
+
+    /// <summary>Abre o link no navegador padrão via Launcher do Windows (sem processo shell).</summary>
+    private static async void OpenUrl(string url)
+    {
+        try
+        {
+            _ = await Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+        }
+        catch
+        {
+            // sem manipulador de URL no sistema — o link ainda é visível para copiar
+        }
+    }
+
+    // ---------- base de dados ----------
+
+    private void UpdateDbInfo()
+    {
+        var path = AnimeBatch.Core.Data.AnimeBatchDbContext.DefaultDbPath();
+        var sizeMb = File.Exists(path)
+            ? $" · {new FileInfo(path).Length / 1024.0 / 1024.0:0.0} MB"
+            : "";
+        DbInfoText.Text = $"{Path.GetFileName(path)}\n{Path.GetDirectoryName(path)}{sizeMb}";
+    }
+
+    private async void BtnClearDb_Click(object sender, RoutedEventArgs e)
+    {
+        var t = AppServices.Localizer;
+        if (AppServices.Queue.IsRunning)
+        {
+            FatalInfo.Severity = InfoBarSeverity.Warning;
+            FatalInfo.Title = t.T("settings.dbClearBlocked");
+            FatalInfo.Message = "";
+            FatalInfo.IsOpen = true;
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = t.T("settings.dbClearTitle"),
+            Content = t.T("settings.dbClearMsg"),
+            CloseButtonText = t.T("episodes.addDialog.cancel"),
+            PrimaryButtonText = t.T("settings.dbClearConfirm"),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            // Apaga os DADOS (jobs, partes, histórico, séries, palavras-chave) e mantém as
+            // preferências (idioma, pastas, chave TMDB, configs de encode). Ordem = FKs.
+            await using var db = AppServices.DbFactory();
+            await db.JobItems.ExecuteDeleteAsync();
+            await db.Jobs.ExecuteDeleteAsync();
+            await db.ConversionRecords.ExecuteDeleteAsync();
+            await db.Series.ExecuteDeleteAsync();
+            await db.Keywords.ExecuteDeleteAsync();
+
+            UpdateDbInfo();
+            FatalInfo.Severity = InfoBarSeverity.Success;
+            FatalInfo.Title = t.T("settings.dbCleared");
+            FatalInfo.Message = "";
+            FatalInfo.IsOpen = true;
+        }
+        catch (Exception ex)
+        {
+            FatalInfo.Severity = InfoBarSeverity.Error;
+            FatalInfo.Title = t.T("settings.title");
+            FatalInfo.Message = ex.Message;
+            FatalInfo.IsOpen = true;
+        }
     }
 }

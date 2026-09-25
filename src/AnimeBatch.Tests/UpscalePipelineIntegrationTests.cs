@@ -208,6 +208,66 @@ public class UpscalePipelineIntegrationTests : IDisposable
         Assert.True(File.Exists(hd));
     }
 
+    [SkippableFact]
+    public async Task Fonte_ntsc_23976_mantem_video_e_audio_sincronizados_apos_varios_chunks()
+    {
+        IntegrationHelpers.SkipIfNoCugan();
+
+        // 65s a 24000/1001 (todo anime NTSC-film): plano de frames = 719+719+120 = 1558 frames.
+        // O corte antigo por -t 30 quantizava pelo fim do frame (719 por chunk) e o remontar a
+        // -framerate fixa "acelerava" o vídeo ~4,2 ms POR CHUNK contra o áudio — ~200 ms de
+        // desync numa parte de 24 min. Aqui vídeo e áudio precisam terminar juntos (±1,5 frame).
+        var src = Path.Combine(_workDir, "ntsc.mkv");
+        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=24000/1001:duration=65 " +
+                  $"-f lavfi -i sine=frequency=440:duration=65 " +
+                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+
+        var output = Path.Combine(_workDir, "ntsc_out.mkv");
+        var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
+        await service.UpscalePartAsync(new UpscalePartRequest(
+            src, 0, 65, Path.Combine(_workDir, "ups_ntsc"), output,
+            SourceHeight: 180, SourceFps: 24000.0 / 1001, TargetHeight: 360,
+            ModelCode: "realcugan", UpscalerExePath: IntegrationHelpers.Tools.RealCuganPath!,
+            LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false,
+            GpuIds: [0, 0], FpsRatio: "24000/1001"),
+            CancellationToken.None, null);
+
+        Assert.True(File.Exists(output), "arquivo de saída não foi gerado");
+
+        var (videoFrames, audioDuration) = StreamMeasurements(output);
+        // 1558 frames exatos = plano 719+719+120; 1557 ou 1559 (±1 frame ≈ 42 ms) falham
+        Assert.Equal(1558, videoFrames);
+        var videoDuration = videoFrames * 1001.0 / 24000.0; // = 64,9816s
+        Assert.True(Math.Abs(videoDuration - audioDuration) <= 1.5 * 1001.0 / 24000.0,
+            $"vídeo {videoDuration:0.000}s vs áudio {audioDuration:0.000}s — desync acima de 1,5 frame");
+    }
+
+    /// <summary>Frames de vídeo (contados por decode) e duração do áudio (pacotes AAC ×
+    /// 1024/rate) — o par é o termômetro do sync. Matroska não expõe duração por stream.</summary>
+    private static (int VideoFrames, double AudioDuration) StreamMeasurements(string file)
+    {
+        var csv = ProcessRunner.Capture(IntegrationHelpers.Tools.FfprobePath!,
+            new[] { "-v", "error", "-count_packets", "-show_entries", "stream=codec_type,nb_read_packets,sample_rate", "-of", "csv=p=0", file },
+            120_000);
+        Skip.IfNot(csv.Ok, "ffprobe não respondeu");
+
+        int videoFrames = 0;
+        double audioDuration = 0;
+        foreach (var line in csv.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // ordem dos campos é por stream: "video,<packets>" e "audio,<rate>,<packets>"
+            var parts = line.Split(',');
+            if (parts[0] == "video" && parts.Length >= 2 &&
+                int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var vf))
+                videoFrames = vf;
+            else if (parts[0] == "audio" && parts.Length >= 3 &&
+                     long.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var rate) && rate > 0 &&
+                     long.TryParse(parts[2], System.Globalization.CultureInfo.InvariantCulture, out var packets))
+                audioDuration = packets * 1024.0 / rate; // AAC: 1024 amostras por pacote
+        }
+        return (videoFrames, audioDuration);
+    }
+
     private static async Task<EpisodeInfo> Probe(string output)
     {
         var probe = new ProbeService(IntegrationHelpers.Tools.FfprobePath!);

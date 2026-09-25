@@ -38,6 +38,11 @@ public class ToolsLocator
         // Upscale é opcional: ausência não impede o resto do app.
         RealCuganPath = Locate("realcugan-ncnn-vulkan.exe");
         RealesrganPath = Locate("realesrgan-ncnn-vulkan.exe");
+        // Av1an (opcional): engine de encode com fatiamento por cena. Precisa do
+        // SvtAv1EncApp ao lado E do VapourSynth+Python na máquina (DLLs no PATH do filho).
+        Av1anPath = Locate("av1an.exe");
+        SvtAv1EncAppPath = Locate("SvtAv1EncApp.exe");
+        VspipePath = Locate("vspipe.exe");
         // Modelos do motor ONNX (AnimeJaNai): tools\models-onnx na raiz (ou subpasta).
         OnnxModelsDir = Directory.Exists(Path.Combine(_toolsDir, "models-onnx"))
             ? Path.Combine(_toolsDir, "models-onnx")
@@ -54,15 +59,23 @@ public class ToolsLocator
     public string? RealCuganPath { get; }
     public string? RealesrganPath { get; }
     public string? OnnxModelsDir { get; }
+    public string? Av1anPath { get; }
+    public string? SvtAv1EncAppPath { get; }
+    public string? VspipePath { get; }
+
+    /// <summary>Pasta tools\ detectada (null se não existe) — base do PATH extra que o
+    /// av1an precisa receber para encontrar ffmpeg/SvtAv1EncApp.</summary>
+    public string? ToolsDir => Directory.Exists(_toolsDir) ? _toolsDir : null;
 
     /// <summary>
     /// Procura a pasta tools\ subindo a árvore a partir do executável — cobre o layout de
-    /// produção (exe + tools\ juntos) e o de desenvolvimento (bin\...\x\ do repo).
+    /// produção (exe + tools\ juntos) e o de desenvolvimento (bin\...\x\ do repo: são 7
+    /// níveis até a raiz do repo, onde tools\ vive — bin\x64\Debug\net9.0-windows…\).
     /// </summary>
     private static string? FindToolsDir()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var i = 0; i < 6 && dir is not null; i++)
+        for (var i = 0; i < 8 && dir is not null; i++)
         {
             var candidate = Path.Combine(dir.FullName, "tools");
             if (Directory.Exists(candidate))

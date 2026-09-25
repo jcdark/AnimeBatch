@@ -28,6 +28,15 @@
                 <NavigationViewItem x:Name="NavSettings" Tag="settings" Icon="Setting" />
             </NavigationView.MenuItems>
 
+            <!-- Logo no cabeçalho do painel lateral -->
+            <NavigationView.PaneHeader>
+                <StackPanel Orientation="Horizontal" Spacing="10" Padding="16,10,0,6">
+                    <Image x:Name="LogoImage" Width="28" Height="28" />
+                    <TextBlock x:Name="PaneTitle" Text="AnimeBatch" FontWeight="SemiBold" FontSize="16"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+            </NavigationView.PaneHeader>
+
             <Frame x:Name="ContentFrame" />
         </NavigationView>
 

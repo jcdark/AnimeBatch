@@ -21,6 +21,7 @@ internal static class AppServices
     public static QueueRunner Queue { get; private set; } = null!;
     public static ProbeService? Probe { get; private set; }
     public static ChapterService Chapters { get; } = new();
+    public static ChapterEditsStore ChapterEdits { get; } = new();
 
     /// <summary>Append de exceções não tratadas em data\crash.log (pasta do app).</summary>
     public static void LogCrash(string source, Exception ex)
@@ -108,6 +109,68 @@ internal static class AppServices
         return string.IsNullOrWhiteSpace(configured) || !Directory.Exists(configured) ? null : configured;
     }
 
+    /// <summary>Diretórios injetados no PATH do processo av1an (separados por ';'):
+    /// tools\ (ffmpeg, SvtAv1EncApp, mkvmerge), a pasta do VapourSynth (vsscript.dll — o
+    /// av1an carrega a API por nome) e Scripts do Python (vspipe.exe). Descobre o
+    /// site-packages no Python 3.x instalado por usuário (o mais novo primeiro).
+    /// Null quando nada existe — o EncodeService reporta o que faltar.</summary>
+    private static string? Av1anEnvPath()
+    {
+        var dirs = new List<string>();
+        if (Tools.ToolsDir is { } tools)
+            dirs.Add(tools);
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var pyRoot = Path.Combine(local, "Programs", "Python");
+        if (Directory.Exists(pyRoot))
+        {
+            foreach (var py in Directory.GetDirectories(pyRoot, "Python3*")
+                         .OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                var vs = Path.Combine(py, "Lib", "site-packages", "vapoursynth");
+                if (File.Exists(Path.Combine(vs, "vsscript.dll")))
+                    dirs.Add(vs);
+                var scripts = Path.Combine(py, "Scripts");
+                if (File.Exists(Path.Combine(scripts, "vspipe.exe")))
+                    dirs.Add(scripts);
+            }
+        }
+        return dirs.Count == 0 ? null : string.Join(";", dirs);
+    }
+
+    private static bool? _av1anBestSource;
+
+    /// <summary>Plugin BestSource do VapourSynth presente? (checagem 1x por execução, cacheada.)
+    /// Presente → o av1an usa -m bestsource: chunks VS frame-exatos, sem a fase silenciosa
+    /// de segmentação por ffmpeg. Checagem por ARQUIVO, sem executar nada: a wheel pip
+    /// instala libbestsource.dll em <python>\Lib\site-packages\vapoursynth\plugins\ — a mesma
+    /// pasta de onde o VS R80 carrega plugins de wheel (avalidado: o namespace 'bs' aparece
+    /// no core). O python que interessa é o MESMO que fornece a VSScript API do av1an
+    /// (tem vapoursynth\vsscript.dll em site-packages); vale também o autoload por usuário.</summary>
+    public static bool Av1anHasBestSource => _av1anBestSource ??= ProbeBestSource();
+
+    private static bool ProbeBestSource()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var pyRoot = Path.Combine(local, "Programs", "Python");
+        if (Directory.Exists(pyRoot))
+        {
+            foreach (var py in Directory.GetDirectories(pyRoot, "Python3*")
+                         .OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(Path.Combine(py, "Lib", "site-packages", "vapoursynth", "vsscript.dll")))
+                    continue;
+                if (File.Exists(Path.Combine(
+                        py, "Lib", "site-packages", "vapoursynth", "plugins", "libbestsource.dll")))
+                    return true;
+            }
+        }
+
+        var userAutoload = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "VapourSynth", "plugins64", "libbestsource.dll");
+        return File.Exists(userAutoload);
+    }
+
     public static void Initialize()
     {
         DbFactory = () => new AnimeBatchDbContext(AnimeBatchDbContext.DefaultDbPath());
@@ -135,7 +198,11 @@ internal static class AppServices
             EncodeConfigs = EncodeConfigs,
             Tools = Tools,
             Probe = Probe,
-            Encode = stall => new EncodeService(Tools.FfmpegPath!, stall),
+            // HandBrakeCLI é o motor primário de encode (os 4 codecs AV1) — medida em
+            // 18/09/2026 igualou o script original; sem o exe, o EncodeService cai no ffmpeg
+            Encode = stall => new EncodeService(Tools.FfmpegPath!, stall, Tools.HandBrakeCliPath,
+                Tools.Av1anPath, Tools.SvtAv1EncAppPath, Av1anEnvPath(), Tools.FfprobePath,
+                av1anBestSource: Av1anHasBestSource),
             Merge = () => new MergeService(Tools.MkvMergePath!),
             Upscale = () => new UpscaleService(Tools.FfmpegPath!),
             OutputDirectory = GetOutputDirectory,

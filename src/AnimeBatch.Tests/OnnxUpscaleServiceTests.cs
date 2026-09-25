@@ -82,7 +82,7 @@ public class OnnxUpscaleServiceTests
     [Fact]
     public void Extract_args_usam_rawvideo_cfr_sem_progress()
     {
-        var args = UpscaleService.BuildRawExtractArgs("origem.mkv", 30, 10, 23.976);
+        var args = UpscaleService.BuildRawExtractArgs("origem.mkv", 30, 720, "23.976");
         var ss = args.ToList().IndexOf("-ss");
         var i = args.ToList().IndexOf("-i");
         Assert.True(ss > 0 && ss < i, "-ss precisa vir antes de -i");
@@ -90,6 +90,9 @@ public class OnnxUpscaleServiceTests
         Assert.Contains("cfr", args);
         Assert.Contains("pipe:1", args);
         Assert.Contains("rgb24", args);
+        Assert.Contains("-frames:v", args);         // corte por frames (desync: -t quantizava)
+        Assert.Contains("720", args);
+        Assert.Contains("23.976", args);            // -r usa a taxa exata
         Assert.DoesNotContain("-progress", args);   // a stdout é vídeo cru — texto corromperia
         Assert.DoesNotContain(args, a => a.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
     }
@@ -97,15 +100,16 @@ public class OnnxUpscaleServiceTests
     [Fact]
     public void Assemble_args_usam_video_size_codigo_por_modo_e_saida_por_ultimo()
     {
-        var lossless = UpscaleService.BuildRawAssembleArgs(1704, 960, 23.976, "seg.mkv", true, 1080);
+        var lossless = UpscaleService.BuildRawAssembleArgs(1704, 960, "24000/1001", "seg.mkv", true, 1080);
         Assert.Contains("1704x960", lossless);
         Assert.Contains("pipe:0", lossless);
+        Assert.Contains("24000/1001", lossless);    // -framerate com a fração exata do probe
         Assert.Contains("-qp", lossless);
         Assert.Contains("0", lossless);
         Assert.Contains("scale=-2:1080:flags=lanczos", lossless);
         Assert.Equal("seg.mkv", lossless[^1]);
 
-        var final = UpscaleService.BuildRawAssembleArgs(640, 480, 24, "fim.mkv", false, 0);
+        var final = UpscaleService.BuildRawAssembleArgs(640, 480, "24/1", "fim.mkv", false, 0);
         Assert.Contains("-crf", final);
         Assert.Contains("14", final);
         Assert.DoesNotContain("-vf", final);       // alvo 0 pula o lanczos

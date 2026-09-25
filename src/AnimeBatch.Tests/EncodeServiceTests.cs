@@ -145,13 +145,85 @@ public class EncodeServiceTests
     [Fact]
     public void Nvenc_cq_usa_cq_e_perfil_e_nivel()
     {
-        var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", UseConstantQuality = true, Cq = 30, Profile = "2", Level = "4.0" };
+        var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", UseConstantQuality = true, Cq = 30, Profile = "0", Level = "4.0" };
         var (args, _) = BuildVideoArgs(cfg, 500);
 
         Assert.Contains("-rc vbr -cq 30 -b:v 0", args);
-        Assert.Contains("-profile:v 2", args);
+        Assert.Contains("-profile:v 0", args);
         Assert.Contains("-level 4.0", args);
         Assert.DoesNotContain("-multipass", args); // no modo CQ o multipass fica oculto
+    }
+
+    [Theory]
+    [InlineData("1")] // High = 4:4:4
+    [InlineData("2")] // Professional = 4:2:2/12-bit — o SVT 4.x rejeitava com "bad parameter"
+    public void Perfil_incompativel_com_av1_420_cai_para_main(string profileSalvo)
+    {
+        // AV1 4:2:0 só existe no Main (0); config antiga com High/Professional não pode
+        // derrubar o encode com EINVAL (código -22)
+        var cfg = new CodecEncodeConfig { Code = "svt_av1_10bit", Profile = profileSalvo };
+        var (args, _) = BuildVideoArgs(cfg, 500);
+
+        Assert.Contains("-profile:v 0", args);
+        Assert.DoesNotContain("-profile:v 1", args);
+        Assert.DoesNotContain("-profile:v 2", args);
+    }
+
+    [Fact]
+    public void Perfil_none_nao_vai_pro_encoder()
+    {
+        var cfg = new CodecEncodeConfig { Code = "svt_av1", Profile = "none" };
+        var (args, _) = BuildVideoArgs(cfg, 500);
+        Assert.DoesNotContain("-profile:v", args);
+    }
+
+    // ---- Caminho HandBrakeCLI (motor primário de encode) ----
+
+    [Fact]
+    public void Handbrake_args_mirram_o_script_original()
+    {
+        var cfg = new CodecEncodeConfig
+        {
+            Code = "svt_av1_10bit", Preset = 5, UseConstantQuality = false, Multipass = true, TurboFirstPass = false,
+        };
+        var (args, multiPass) = EncodeService.BuildHandBrakeArgs(
+            cfg, 450, "src.mkv", new EncodeService.JobItemRef(36, 125.999, 450), "out.mkv");
+
+        Assert.True(multiPass);
+        Assert.Equal(
+            "-i src.mkv -o out.mkv --start-at seconds:36 --stop-at duration:89.999 -e svt_av1_10bit " +
+            "--encoder-preset 5 -b 450 --multi-pass --audio 1 --aencoder av_aac --ab 160",
+            string.Join(' ', args));
+    }
+
+    [Fact]
+    public void Handbrake_turbo_na_primeira_passada_e_nome_do_codec_passthrough()
+    {
+        var cfg = new CodecEncodeConfig { Code = "nvenc_av1_10bit", Preset = 7, TurboFirstPass = true };
+        var (args, multiPass) = EncodeService.BuildHandBrakeArgs(
+            cfg, 900, "s.mkv", new EncodeService.JobItemRef(0, 10, 900), "o.mkv");
+
+        Assert.True(multiPass);
+        Assert.Contains("--turbo", args);
+        Assert.Contains("-e nvenc_av1_10bit", string.Join(' ', args)); // o nome do codec É o nome do encoder no HB
+    }
+
+    [Fact]
+    public void Handbrake_conversao_rapida_tira_o_multipass_e_cq_usa_quality()
+    {
+        var rapida = new CodecEncodeConfig { Code = "svt_av1", FastConversion = true, Multipass = true };
+        var (argsRapida, multiRapida) = EncodeService.BuildHandBrakeArgs(
+            rapida, 500, "s.mkv", new EncodeService.JobItemRef(0, 10, 500), "o.mkv");
+        Assert.False(multiRapida);
+        Assert.DoesNotContain("--multi-pass", argsRapida);
+        Assert.Contains("-b 500", string.Join(' ', argsRapida));
+
+        var cq = new CodecEncodeConfig { Code = "svt_av1_10bit", UseConstantQuality = true, Cq = 28 };
+        var (argsCq, multiCq) = EncodeService.BuildHandBrakeArgs(
+            cq, 500, "s.mkv", new EncodeService.JobItemRef(0, 10, 500), "o.mkv");
+        Assert.False(multiCq);
+        Assert.Contains("--quality 28", string.Join(' ', argsCq));
+        Assert.DoesNotContain("-b", argsCq);
     }
 
     [Fact]
@@ -260,5 +332,92 @@ public class EncodeServiceTests
         Assert.Single(EncodeService.BoostVariants(full with { FastConversion = true }));
         Assert.Single(EncodeService.BoostVariants(full with { QualityBoost = false }));
         Assert.Single(EncodeService.BoostVariants(full with { Code = "svt_av1_10bit" }));
+    }
+
+    // ---- Caminho Av1an (códigos av1an_*) ----
+
+    [Fact]
+    public void Av1an_args_crf_8bit_byte_identico()
+    {
+        var args = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", Preset = 8, UseConstantQuality = true, Cq = 30, ScenecutMode = 0 },
+            kbps: 500, "in.mkv", "out.mkv", "work\\av1an_out", "work\\pass_01_av1an.log",
+            internalWorkers: 6, audioParams: "-c:a copy");
+
+        Assert.Equal(
+            "-i in.mkv -o out.mkv --temp work\\av1an_out -e svt-av1 -w 6 -y -l work\\pass_01_av1an.log " +
+            "--no-defaults --pix-format yuv420p -v --keyint 240 --scd 0 --preset 8 --rc 0 --crf 30 -a -c:a copy",
+            string.Join(' ', args));
+    }
+
+    [Fact]
+    public void Av1an_scenecut_rapida_passa_downscale_720()
+    {
+        // modo 1 é o DEFAULT da config (configs antigas sem a chave ganham a análise rápida)
+        var args = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1_10bit", Preset = 6 },
+            450, "i", "o", "t", "l.log", 4, "-c:a copy");
+
+        var joined = string.Join(' ', args);
+        Assert.Contains("--sc-downscale-height 720", joined);
+        Assert.DoesNotContain("--sc-method", joined);
+    }
+
+    [Fact]
+    public void Av1an_scenecut_maxima_passa_downscale_360_e_metodo_fast()
+    {
+        var args = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", ScenecutMode = 2 },
+            500, "i", "o", "t", "l.log", 4, "-c:a copy");
+
+        var joined = string.Join(' ', args);
+        Assert.Contains("--sc-downscale-height 360", joined);
+        Assert.Contains("--sc-method fast", joined);
+    }
+
+    [Fact]
+    public void Av1an_bestsource_usa_chunk_method_vs_e_preciso_nao_passa_nada()
+    {
+        var com = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", ScenecutMode = 0 },
+            500, "i", "o", "t", "l.log", 4, "-c:a copy", bestSourceChunks: true);
+        Assert.Contains("-m", com);
+        Assert.Contains("bestsource", com);
+
+        var sem = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", ScenecutMode = 0 },
+            500, "i", "o", "t", "l.log", 4, "-c:a copy");
+        Assert.DoesNotContain("bestsource", sem);
+    }
+
+    [Fact]
+    public void Av1an_args_10bit_com_2pass_bitrate()
+    {
+        var args = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1_10bit", Preset = 6, UseConstantQuality = false, Multipass = true },
+            kbps: 450, "in.mkv", "out.mkv", "work\\tmp", "work\\l.log", internalWorkers: 4, audioParams: "-c:a aac -b:a 160k");
+
+        var joined = string.Join(' ', args);
+        // -p 2 só no modo bitrate+multipass; 10 bits no pix-format; rc/tbr no lugar do crf
+        Assert.Contains(" -p 2 ", joined);
+        Assert.Contains("--pix-format yuv420p10le", joined);
+        Assert.Contains("--preset 6 --rc 1 --tbr 450", joined);
+        Assert.DoesNotContain("--crf", joined);
+        // GOP obrigatório: keyint 0 (default do av1an) quebra o VBR no svt 4.x
+        Assert.Contains("--keyint 240", joined);
+    }
+
+    [Fact]
+    public void Av1an_fastconversion_ou_cq_nao_tem_2pass()
+    {
+        var cq = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", UseConstantQuality = true, Cq = 22 },
+            500, "i", "o", "t", "l.log", 4, "-c:a copy");
+        Assert.DoesNotContain("-p", cq);
+
+        var fast = EncodeService.BuildAv1anArgs(
+            new CodecEncodeConfig { Code = "av1an_av1", FastConversion = true },
+            500, "i", "o", "t", "l.log", 4, "-c:a copy");
+        Assert.DoesNotContain("-p", fast);
     }
 }

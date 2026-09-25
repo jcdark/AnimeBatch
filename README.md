@@ -1,72 +1,73 @@
 # AnimeBatch
 
-App desktop Windows para conversão de animes em lote: divisão por capítulos, encode por parte
-com bitrates por série, upscale opcional (ncnn-Vulkan ou ONNX/DirectML) e união com mkvmerge —
-sucessor do script `converter.py` (E:\BatchVideo).
+*Read this in [Português (Brasil)](README_PTBR.md).*
 
-## Recursos (por marco)
+**AnimeBatch** is a Windows desktop app for batch anime conversion — feed it a season, and it splits episodes into chapter-aware parts, encodes each part with the bitrate it deserves, optionally upscales with AI, and merges everything into a clean MKV with proper chapters. It is the successor of a long-lived Python script (`converter.py`) that did the same job by hand.
 
-| Marco | Recursos | Status |
-|---|---|---|
-| **M1** | Esqueleto WinUI 3, banco SQLite local (na pasta do app), probe de episódios (ffprobe), grade de capítulos com classificação OP/ED, séries/bitrates no banco, importação do `converter.yml` legado, fila persistida com reordenação | ✅ concluído |
-| **M2** | Execução da fila (Core.Queueing): SVT-AV1 (1–13, 2-pass real com turbo) e NVENC (av1_nvenc p1–p7, VBR com teto, multipass, escada de reforço de qualidade), encode paralelo por GPU | ✅ concluído |
-| **M3** | Merge com mkvmerge e capítulos cumulativos OGM (Critical não vira capítulo); áudio da 1ª trilha re-encodado AAC 160k (stream-copy quebra o corte -ss/-t); legendas preservadas só no modo "Apenas upscaling" | ✅ concluído |
-| **M4** | Upscale opcional: Real-CUGAN / Real-ESRGAN via ncnn-vulkan **e** AnimeJaNai via ONNX/DirectML in-process (chunks de 30s, sessão por worker, benchmark/pruning de GPU) | ✅ concluído |
-| **M5** | Telas (Fila, Episódios, Encodes, Hardware, Séries+TMDB, Configurações, i18n pt-BR/en-US) + release versionado (`scripts/make-release.ps1`) | ✅ concluído |
+Built with **WinUI 3 / .NET 9** (unpackaged, portable x64), backed by **SQLite**, with ~220 automated tests (unit + real integration runs against the bundled tools).
 
-Arquitetura e pipeline: [`docs/arquitetura.md`](docs/arquitetura.md).
+## Why AnimeBatch
 
-## Estrutura
+- **Quality where it matters.** Each series carries its own bitrates: one for regular episodes, another for openings and endings. Everything targets **AV1** — hardware NVENC or software SVT-AV1 — tuned for the low bitrates where anime actually lives (500 kbps episodes are the norm here).
+- **Chapter-aware pipeline.** Episodes are split into parts (opening / episode / ending / custom chapters), each part is encoded with its own target, and the final merge (mkvmerge) writes cumulative OGM chapters. Chapter ends are derived automatically — you only pick start times.
+- **Frame-exact, sync-safe cutting.** Video is chunked by **frame counts** with the exact fractional frame rate (e.g. `24000/1001`), not by seconds — a subtle difference that used to drift ~200 ms of A/V desync per 24-minute NTSC episode. The pipeline is validated against VFR/NTSC sources.
+- **Three AV1 engines, one contract.** NVENC AV1 (8/10-bit) with a quality-boost ladder (spatial/temporal AQ, UHQ tune, temporal filter) that self-heals on older drivers; SVT-AV1 (8/10-bit) with real 2-pass; and **Av1an** — scene-chunked SVT with parallel chunk workers, fast scene-detection modes (720p downscale) and BestSource frame-accurate chunking.
+- **Parallelism you control.** 1–3 CPU encode slots for the software engines, a per-GPU pool for NVENC, and a live status footer showing **one line per worker** with its fps, speed and target bitrate.
+- **Optional AI upscaling.** Real-CUGAN, Real-ESRGAN (ncnn-Vulkan) or AnimeJaNai (ONNX/DirectML, in-process, one session per worker, GPU benchmark and pruning built in).
+- **Local and portable.** No installer, no cloud, no telemetry. The database lives in `%LOCALAPPDATA%\AnimeBatch`, covers are stored in it, and every release is a versioned portable folder with all external tools bundled and credited.
+- **TMDB integration.** Search by name *or* by TMDB ID, link the series, and the cover is downloaded and kept in the database.
 
-```
-E:\AnimeBatch\
-├─ src\
-│  ├─ AnimeBatch.App\     — GUI WinUI 3 (.NET 9, unpackaged/self-contained)
-│  ├─ AnimeBatch.Core\    — lógica sem GUI: entidades, EF Core, serviços, fila (Core.Queueing)
-│  └─ AnimeBatch.Tests\   — xUnit (~150 testes: unit + integração real; pula sem tools\)
-├─ docs\arquitetura.md    — pipeline, estados da fila, mapa de GPUs
-├─ tools\                 — binários externos embutidos (NÃO versionados, ~500 MB)
-├─ data\                  — banco animebatch.db (junto do app; portátil)
-├─ scripts\               — make-release.ps1, setup-tools.ps1, smoke-latest.ps1
-└─ AnimeBatch.slnx
-```
+## Feature highlights
 
-## Pré-requisitos
+| Area | What you get |
+|---|---|
+| Engines | NVENC AV1 / AV1 10-bit (p1–p7, VBR with bitrate ceiling, `-multipass fullres`, lookahead 32, quality-boost ladder), SVT-AV1 / 10-bit (preset 1–13, real 2-pass, turbo first pass), Av1an (scene chunks + parallel chunk workers, scene-detection speed modes, BestSource chunking) |
+| Chapters | Start-time-only editor with derived ends, per-chapter **preset and CQ/bitrate overrides**, temporary chapters, reset-to-source grid |
+| Upscale | Real-CUGAN / Real-ESRGAN (ncnn-Vulkan) and AnimeJaNai (ONNX/DirectML), targets up to 4K, "upscale only" or "upscale + encode" |
+| Queue | Persistent queue with reorder/pause/stop, auto-remove on completion, per-job live progress |
+| Status footer | Per-worker lines (fps · speed · target rate), chunk counter, pipeline phases (analyzing scenes → preparing chunks → encoding) |
+| Library | Series with per-series bitrates, conversion history, TMDB covers, legacy YAML import |
+| Settings | Tool credits, database size + one-click wipe, output directory, UI language (pt-BR / en-US) |
 
-- .NET SDK 9+ (Windows x64)
-- Binários na `tools\`: `ffmpeg.exe`, `ffprobe.exe`, `mkvmerge.exe`, `mkvextract.exe`, `HandBrakeCLI.exe`,
-  upscalers opcionais (`realcugan-ncnn-vulkan.exe`, `realesrgan-ncnn-vulkan.exe`) e `models-onnx\`
-  (`scripts/setup-tools.ps1` baixa/copía). Pastas extras de busca: setting `tools.extraDirs`.
+## Requirements
 
-## Build, teste e release
+- **Runtime:** Windows 10/11 x64. Unzip a release and run `AnimeBatchV*.exe` — that's it.
+- **NVENC AV1 engine:** NVIDIA RTX-class GPU with driver **≥ 610** (NVENC API 13.1).
+- **Av1an engine (optional):** [VapourSynth](https://www.vapoursynth.com) R80+ and Python 3.13 on the machine; the BestSource plugin (`pip install vapoursynth-bestsource`) removes the segmenting pass entirely.
+- **Build:** .NET 9 SDK (Windows x64).
+
+## Build & test
 
 ```powershell
-cd E:\AnimeBatch
-dotnet build AnimeBatch.slnx                # NA SOLUÇÃO não use -p:Platform (o App já é x64-only)
-dotnet test  AnimeBatch.slnx                # integração pula sozinha se tools\ estiver vazio
-powershell -File scripts\make-release.ps1   # publish x64 → dist\AnimeBatchV<versao>\
+dotnet build AnimeBatch.slnx
+dotnet test  AnimeBatch.slnx          # ~220 tests; integration tests skip gracefully without tools\
+scripts/setup-tools.ps1               # downloads external tools into tools\ (~500 MB, not committed)
+scripts/make-release.ps1              # versioned portable package into dist\
 ```
 
-Em dev, o app encontra a `tools\` da raiz do repositório subindo a árvore de diretórios a partir do exe.
-O exe nasce como `AnimeBatchV<versao>.exe` (AssemblyName versionado — NÃO renomear pós-publish).
-Antes de distribuir: copiar `data\animebatch.db` da versão anterior.
+> Build the **solution** without `-p:Platform=x64` (the .slnx has no x64 solution configuration); the flag is project-level only.
 
-## Banco de dados
+## Project layout
 
-- SQLite via EF Core, arquivo `data\animebatch.db` **dentro da pasta do aplicativo** — mover a pasta leva os dados.
-- Migrations: `dotnet ef migrations add <Nome> --project src\AnimeBatch.Core --startup-project src\AnimeBatch.Core -o Data/Migrations`
-  (o upgrade real é coberto por testes — `MigrationTests`).
-- Tabelas: `Series` (bitrates min/OP/ED por série + TMDB), `Keywords` (palavras OP/ED editáveis),
-  `Jobs`/`JobItems` (fila com `Order`, estados por parte e retomada entre reinícios), `Setting`,
-  `ConversionRecords` (histórico).
-- A importação do `converter.yml` do script legado é feita uma única vez no 1º boot (duplicadas no
-  YML: a primeira entrada vence, mesmo comportamento do script).
+```
+AnimeBatch/
+├─ AnimeBatch.slnx
+├─ src/AnimeBatch.App/      WinUI 3 GUI (pages, queue UI, i18n pt-BR/en-US, assets)
+├─ src/AnimeBatch.Core/     Engine-free core: models, EF Core + SQLite, encode services, queue runner
+├─ src/AnimeBatch.Tests/    xUnit suite (unit + real encode/pipeline integration)
+├─ docs/arquitetura.md      Pipeline, engine notes, GPU map (pt-BR)
+├─ scripts/                 setup-tools, make-release, make-icon
+└─ tools/                   External binaries (downloaded, NOT committed)
+```
 
-## Paridade com o script (referências)
+## Database
 
-- Nome de série normalizado: minúsculas + remoção do sufixo ` - SXXEXX…` (`ChapterService.CleanSeriesName`).
-- Classificação de capítulo por substring no título: OP → Opening, ED/credits → Ending, resto → Episode
-  (OP tem precedência; palavras editáveis no banco; Critical marcado à mão na tela).
-- Fim de capítulo = início do próximo − 1ms; último vai até a duração total; capítulos < 0,5 s descartados.
-- Nome de parte: `N - Título - Base.mkv`.
-- Defaults sem série: min 500 / OP 1500 / ED 500 kbps.
+SQLite via EF Core. On first run the seed database shipped in the package is **copied to** `%LOCALAPPDATA%\AnimeBatch\animebatch.db` — from then on AppData is the source of truth and survives reinstalls. Edited chapter grids are saved alongside it (`chapters-edits\`). Versioned EF migrations; the upgrade path is covered by tests.
+
+## Credits
+
+AnimeBatch stands on these tools, bundled with every release and credited in-app: [FFmpeg](https://ffmpeg.org) (+ ffprobe), [MKVToolNix](https://mkvtoolnix.download), [HandBrake](https://handbrake.fr), [SVT-AV1](https://gitlab.com/AOMediaCodec/SVT-AV1), [Av1an](https://github.com/rust-av/av1an), [VapourSynth](https://www.vapoursynth.com), [Real-CUGAN](https://github.com/nihui/realcugan-ncnn-vulkan), [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN), [AnimeJaNai](https://github.com/the-database/AnimeJaNai). Metadata from [TMDB](https://www.themoviedb.org).
+
+---
+
+Private project — all rights reserved.

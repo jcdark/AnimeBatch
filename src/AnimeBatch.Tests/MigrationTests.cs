@@ -54,10 +54,15 @@ public class MigrationTests : IDisposable
         Assert.Contains("UpscaleMode", jobs);
         Assert.Contains("VideoCodec", jobs);
         Assert.Contains("ErrorMessage", jobs);
+        Assert.Contains("IsTemporary", ColumnsOf("JobItems")); // V0.41 (capítulo temporário)
+        Assert.Contains("Preset", ColumnsOf("JobItems"));      // V0.42 (preset por capítulo)
+        Assert.Contains("Cq", ColumnsOf("JobItems"));          // V0.42 (CQ por capítulo)
         Assert.DoesNotContain("MinKbps", jobs);         // renomeado
         Assert.DoesNotContain("UpscaleEnabled", jobs);  // virou UpscaleMode
 
-        Assert.Contains("TmdbId", ColumnsOf("Series"));
+        var series = ColumnsOf("Series");
+        Assert.Contains("TmdbId", series);
+        Assert.Contains("CoverImageBase64", series);    // V0.41 (capa em base64)
         Assert.Contains("FileName", ColumnsOf("ConversionRecords")); // nasceu na 2ª migration
     }
 
@@ -89,6 +94,17 @@ public class MigrationTests : IDisposable
                     "MinKbps" INTEGER NOT NULL,
                     "MaxKbps" INTEGER NOT NULL,
                     "EndKbps" INTEGER NOT NULL);
+                CREATE TABLE "JobItems" (
+                    "Id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                    "JobId" INTEGER NOT NULL,
+                    "Order" INTEGER NOT NULL,
+                    "Title" TEXT NOT NULL,
+                    "StartSeconds" REAL NOT NULL,
+                    "EndSeconds" REAL NOT NULL,
+                    "Class" INTEGER NOT NULL,
+                    "TargetKbps" INTEGER NOT NULL,
+                    "State" INTEGER NOT NULL,
+                    "OutputPath" TEXT NULL);
                 CREATE TABLE "__EFMigrationsHistory" (
                     "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
                     "ProductVersion" TEXT NOT NULL);
@@ -112,7 +128,11 @@ public class MigrationTests : IDisposable
         Assert.Contains("UpscaleMode", jobs);
         Assert.Contains("VideoCodec", jobs);
         Assert.Contains("ErrorMessage", jobs);
+        Assert.Contains("IsTemporary", ColumnsOf("JobItems")); // V0.41 (capítulo temporário)
+        Assert.Contains("Preset", ColumnsOf("JobItems"));      // V0.42 (preset por capítulo)
+        Assert.Contains("Cq", ColumnsOf("JobItems"));          // V0.42 (CQ por capítulo)
         Assert.DoesNotContain("UpscaleOptionsJson", jobs); // dropada na 2ª migration
+        Assert.Contains("CoverImageBase64", ColumnsOf("Series")); // V0.41 (capa em base64)
         Assert.Contains("FileName", ColumnsOf("ConversionRecords"));
 
         // os bitrates sobreviveram ao rename SEMÂNTICO (o risco real do upgrade em produção)

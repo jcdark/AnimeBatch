@@ -30,6 +30,32 @@ if (-not (Test-Path (Join-Path $out "AnimeBatchV$ReleaseVersion.pri"))) {
 robocopy (Join-Path $root "tools") (Join-Path $out "tools") /E /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy tools falhou ($LASTEXITCODE)" }
 
+# O pacote precisa sair COMPLETO - o usuario final nao roda setup nenhum. Essenciais
+# (o app nao processa sem eles) e Av1an (os codecs AV1an existem na UI) FALTAM = erro.
+# Upscale/ONNX sao opcionais em runtime, mas o dono quer o pacote cheio: aviso forte.
+$missing = @()
+foreach ($tool in @("ffmpeg.exe", "ffprobe.exe", "mkvmerge.exe", "mkvextract.exe", "HandBrakeCLI.exe")) {
+    if (-not (Test-Path (Join-Path $out "tools\$tool"))) { $missing += "tools\$tool" }
+}
+foreach ($tool in @("tools\av1an\av1an.exe", "tools\svt-av1\SvtAv1EncApp.exe", "tools\svt-av1\libSvtAv1Enc-4.dll")) {
+    if (-not (Test-Path (Join-Path $out $tool))) { $missing += $tool }
+}
+if ($missing.Count -gt 0) {
+    throw ("Pacote INCOMPLETO - faltam ferramentas (rode scripts\setup-tools.ps1 e gere de novo): " + ($missing -join ", "))
+}
+
+$optional = @()
+foreach ($tool in @("tools\realcugan", "tools\realesrgan", "tools\models-onnx")) {
+    if (-not (Test-Path (Join-Path $out $tool))) { $optional += $tool }
+}
+if ($optional.Count -gt 0) {
+    Write-Warning ("Upscale/ONNX ausente no pacote (upscaling nao funcionara): " + ($optional -join ", "))
+}
+
+if (-not (Test-Path (Join-Path $out "i18n\pt-BR.json"))) {
+    throw "i18n\pt-BR.json ausente no pacote - o publish ficou sem o conteudo da UI"
+}
+
 # O publish arrasta ~80 pastas de idioma com .mui do runtime WinUI (traducoes de
 # mensagem do Microsoft.UI.Xaml que o app nao usa - a UI tem i18n propria em i18n\).
 # Fica so pt-BR (default) e en-us; qualquer outro idioma cai no fallback do MUI.

@@ -6,7 +6,7 @@
          precisam casar com o nome do exe, então a versão entra no AssemblyName,
          não numa renomeação pós-publish. Version PRECISA vir antes do AssemblyName. -->
     <!-- Version curto (0.3) → exe AnimeBatchV0.28.exe. Nas próximas versões, subir aqui. -->
-    <Version>0.33</Version>
+    <Version>0.46</Version>
     <AssemblyName>AnimeBatchV$(Version)</AssemblyName>
     <!-- O pacote ONNX Runtime DirectML entrega o mesmo DirectML.dll por dois caminhos
          (NuGet nativo e MsixContent do WinUI); é o MESMO binário, então deixa passar. -->
@@ -15,6 +15,9 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>AnimeBatch.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Ícone do exe (Explorer/barra de tarefas) — o ícone da JANELA é setado em runtime
+         (MainWindow: AppWindow.SetIcon) porque app desempacotado não lê do manifesto. -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -41,6 +44,10 @@
     <Content Include="seed\**" CopyToOutputDirectory="PreserveNewest" />
     <!-- Arquivos de tradução (idiomas aparecem no seletor de Configurações) -->
     <Content Include="i18n\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Logo/ícone: app.ico para o ícone da janela (AppWindow.SetIcon em runtime) e
+         logo.png para o cabeçalho do menu lateral -->
+    <Content Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\logo.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- O publish do WinUI 3 não copia o .pri do app (onde vai o XAML compilado) — sem ele o

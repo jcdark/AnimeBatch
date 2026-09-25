@@ -20,7 +20,8 @@ public static class NvencGpuProbe
             var smi = DmlDeviceCalibration.FindNvidiaSmi();
             if (smi is not null)
             {
-                var (stdout, ok) = ProcessRunner.Capture(smi, "--query-gpu=index,name --format=csv,noheader", 10_000);
+                var (stdout, ok) = ProcessRunner.Capture(smi,
+                    new[] { "--query-gpu=index,name", "--format=csv,noheader" }, 10_000);
                 if (ok)
                     devices = ParseLines(stdout.Split('\n'));
             }

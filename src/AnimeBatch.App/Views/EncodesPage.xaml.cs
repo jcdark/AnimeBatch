@@ -23,9 +23,11 @@ public sealed partial class EncodesPage : Page
         ("None", "none"), ("0 — VQ Delay", "0"), ("1 — Psicovisual", "1"),
     ];
 
+    // Todos os codecs do app são AV1 e a saída é sempre 4:2:0 — só existe Main (0):
+    // High (1) é 4:4:4 e Professional (2) é 4:2:2/12-bit; o SVT 4.x rejeita com -22.
     private static readonly (string Label, string Value)[] Profiles =
     [
-        ("None", "none"), ("Main (0)", "0"), ("High (1)", "1"), ("Professional (2)", "2"),
+        ("None", "none"), ("Main (0)", "0"),
     ];
 
     private static readonly string[] Levels = ["Auto", "2.0", "3.0", "4.0", "4.1", "5.0", "5.1", "6.0"];
@@ -70,6 +72,29 @@ public sealed partial class EncodesPage : Page
         CmbProfile.Header = t.T("encodes.profile");
         CmbLevel.Header = t.T("encodes.level");
         CmbCodec.Header = t.T("encodes.selectCodec");
+        CmbParallel.Header = t.T("encodes.parallel");
+        ParallelHint.Text = t.T("encodes.parallelHint");
+
+        // Encodes em paralelo (SVT no CPU): 1/2/3 — o índice É o número de workers
+        _suppressEvents = true;
+        CmbParallel.ItemsSource = new List<string>
+        {
+            t.T("encodes.parallel1"),
+            t.T("encodes.parallel2"),
+            t.T("encodes.parallel3"),
+        };
+        CmbParallel.SelectedIndex = _current is null ? 0 : _current.EffectiveParallelWorkers - 1;
+        _suppressEvents = false;
+
+        // Detecção de cenas (só motor Av1an): o índice É o modo (0/1/2)
+        CmbScenecut.Header = t.T("encodes.scenecut");
+        CmbScenecut.ItemsSource = new List<string>
+        {
+            t.T("encodes.scenecutPrecise"),
+            t.T("encodes.scenecutFast"),
+            t.T("encodes.scenecutMax"),
+        };
+        CmbScenecut.SelectedIndex = _current is null ? 1 : _current.EffectiveScenecutMode;
     }
 
     private void LoadCodecs()
@@ -80,6 +105,8 @@ public sealed partial class EncodesPage : Page
     }
 
     private bool IsNvenc => _current?.Code.StartsWith("nvenc", StringComparison.Ordinal) == true;
+
+    private bool IsAv1an => _current?.Code.StartsWith("av1an", StringComparison.Ordinal) == true;
 
     private async void CmbCodec_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -112,10 +139,19 @@ public sealed partial class EncodesPage : Page
         CmbTune.SelectedIndex = IndexOfValue(tunes, cfg.Tune);
 
         CmbProfile.ItemsSource = Profiles.Select(x => x.Label).ToList();
-        CmbProfile.SelectedIndex = IndexOfValue(Profiles, cfg.Profile);
+        // config antiga com High/Professional (hoje inválidos no AV1 4:2:0) mostra como Main
+        CmbProfile.SelectedIndex = IndexOfValue(Profiles, cfg.Profile is "1" or "2" ? "0" : cfg.Profile);
 
         CmbLevel.ItemsSource = Levels;
         CmbLevel.SelectedIndex = Math.Max(0, Levels.ToList().IndexOf(cfg.Level));
+
+        // Encodes em paralelo: só codecs SVT (NVENC tem pool próprio por placa na aba Hardware)
+        _suppressEvents = true;
+        CmbParallel.SelectedIndex = cfg.EffectiveParallelWorkers - 1;
+        _suppressEvents = false;
+
+        // Detecção de cenas: índice = modo (0/1/2) da config do codec corrente
+        CmbScenecut.SelectedIndex = cfg.EffectiveScenecutMode;
 
         ApplyModeDependencies();
         _suppressEvents = false;
@@ -145,6 +181,10 @@ public sealed partial class EncodesPage : Page
         ChkFast.Visibility = IsNvenc ? Visibility.Visible : Visibility.Collapsed;
         // Reforço de qualidade: só NVENC (AQ/UHQ são recursos do encoder da NVIDIA)
         ChkBoost.Visibility = IsNvenc ? Visibility.Visible : Visibility.Collapsed;
+        // Encodes em paralelo: só SVT (NVENC paraleliza pelo pool de placas)
+        ParallelPanel.Visibility = IsNvenc ? Visibility.Collapsed : Visibility.Visible;
+        // Detecção de cenas: só motor Av1an (av-scenechange) — SVT direto e NVENC não têm
+        CmbScenecut.Visibility = IsAv1an ? Visibility.Visible : Visibility.Collapsed;
         UpdateBoostEnabled();
     }
 
@@ -193,6 +233,8 @@ public sealed partial class EncodesPage : Page
             Tune = (IsNvenc ? TuneNvenc : TuneSvt)[Math.Max(0, CmbTune.SelectedIndex)].Value,
             Profile = Profiles[Math.Max(0, CmbProfile.SelectedIndex)].Value,
             Level = (CmbLevel.SelectedItem?.ToString() ?? "Auto").ToLowerInvariant(), // "Auto" → "auto" (valor, não rótulo)
+            ParallelWorkers = Math.Clamp(CmbParallel.SelectedIndex + 1, 1, 3),
+            ScenecutMode = Math.Clamp(CmbScenecut.SelectedIndex, 0, 2),
         };
 
         await AppServices.EncodeConfigs.SaveAsync(cfg);

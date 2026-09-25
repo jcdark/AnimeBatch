@@ -72,5 +72,7 @@ public static class VideoCodecOptions
         ("AV1 10bits", "svt_av1_10bit"),
         ("AV1 NVENC", "nvenc_av1"),
         ("AV1 10bits NVENC", "nvenc_av1_10bit"),
+        ("AV1an", "av1an_av1"),
+        ("AV1an 10bits", "av1an_av1_10bit"),
     ];
 }

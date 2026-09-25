@@ -18,6 +18,8 @@ public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
     public const string StallMinutes = "queue.stallMinutes";
     /// <summary>Pastas extras de busca de binários, separadas por ';' (ToolsLocator).</summary>
     public const string ToolsExtraDirs = "tools.extraDirs";
+    /// <summary>Última pasta aberta na tela de Episódios — recarregada ao voltar à aba.</summary>
+    public const string EpisodesLastFolder = "episodes.lastFolder";
 
     private readonly Func<AnimeBatchDbContext> _factory = contextFactory;
 

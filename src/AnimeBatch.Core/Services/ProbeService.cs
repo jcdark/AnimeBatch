@@ -15,7 +15,10 @@ public record EpisodeInfo(
     IReadOnlyList<ChapterInfo> Chapters,
     int Width,
     int Height,
-    double Fps);
+    double Fps,
+    /// <summary>Taxa de frames no formato exato do ffprobe ("24000/1001") — o double Fps
+    /// arredonda 23.976… e o drift de remontagem por tempo acumula. "" quando indisponível.</summary>
+    string FpsRatio = "");
 
 /// <summary>Wrapper do ffprobe: duração, trilhas, legendas e capítulos de um episódio em uma chamada.</summary>
 public class ProbeService : Queueing.IProbeStage
@@ -61,6 +64,7 @@ public class ProbeService : Queueing.IProbeStage
         var subtitles = new List<SubtitleStreamInfo>();
         int width = 0, height = 0;
         var fps = 0.0;
+        var fpsRatio = "";
 
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
         {
@@ -80,6 +84,8 @@ public class ProbeService : Queueing.IProbeStage
                     if (ParseFps(fpsValue) <= 0)
                         fpsValue = s.TryGetProperty("r_frame_rate", out var rEl) ? rEl.GetString() : null;
                     fps = ParseFps(fpsValue);
+                    if (fps > 0)
+                        fpsRatio = fpsValue ?? "";
                 }
                 else if (codecType == "audio")
                 {
@@ -108,7 +114,7 @@ public class ProbeService : Queueing.IProbeStage
             }
         }
 
-        return new EpisodeInfo(videoPath, duration, audio, subtitles, chapters, width, height, fps);
+        return new EpisodeInfo(videoPath, duration, audio, subtitles, chapters, width, height, fps, fpsRatio);
     }
 
     /// <summary>Converte "24000/1001" (avg/r_frame_rate do ffprobe) em fps; 0 se inválido.</summary>

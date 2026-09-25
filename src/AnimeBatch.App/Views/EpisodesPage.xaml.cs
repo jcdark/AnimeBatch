@@ -1,6 +1,7 @@
 using AnimeBatch.App.Services;
 using AnimeBatch.App.ViewModels;
 using AnimeBatch.Core.Models;
+using AnimeBatch.Core.Queueing;
 using AnimeBatch.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -44,6 +45,8 @@ public sealed partial class EpisodesPage : Page
         BtnPickFolder.Content = t.T("episodes.pickFolder");
         ChaptersHeader.Text = t.T("episodes.chapters");
         BtnAddChapter.Content = t.T("episodes.addChapter");
+        BtnResetChapters.Content = t.T("episodes.resetChapters");
+        ToolTipService.SetToolTip(BtnResetChapters, t.T("episodes.resetChaptersHint"));
         BtnEnqueue.Content = t.T("episodes.enqueue");
         CmbUpscaleNone.Content = t.T("episodes.upscaleNone");
         CmbUpscaleOnly.Content = t.T("episodes.upscaleOnly");
@@ -60,9 +63,17 @@ public sealed partial class EpisodesPage : Page
         UpdateSizeEstimateLabels(0);
     }
 
-    /// <summary>Pasta Origem Vídeos (Configurações): carrega os episódios automaticamente.</summary>
+    /// <summary>Pasta da última sessão (setting "episodes.lastFolder") vence; sem ela, a
+    /// Pasta Origem Vídeos (Configurações). Nenhuma das duas = tela começa vazia.</summary>
     private async Task LoadDefaultFolderAsync()
     {
+        var last = await AppServices.Settings.GetAsync(SettingsRepository.EpisodesLastFolder);
+        if (!string.IsNullOrEmpty(last) && Directory.Exists(last))
+        {
+            await LoadFolderAsync(last);
+            return;
+        }
+
         var source = await AppServices.GetSourceDirectoryAsync();
         if (!string.IsNullOrEmpty(source) && Directory.Exists(source))
             await LoadFolderAsync(source);
@@ -85,6 +96,7 @@ public sealed partial class EpisodesPage : Page
         FolderLabel.Text = folder;
         _episodes.Clear();
         SetDetailVisible(false);
+        UpdateResetButton();
 
         var files = Directory.EnumerateFiles(folder)
             .Where(f =>
@@ -103,6 +115,15 @@ public sealed partial class EpisodesPage : Page
             : InfoBarSeverity.Success,
             AppServices.Localizer.T("episodes.found", _episodes.Count),
             _episodes.Count == 0 ? AppServices.Localizer.T("episodes.foundEmptyHint") : null);
+
+        // memoriza a pasta p/ recarregar na próxima vez que abrir a aba (best-effort:
+        // falha de banco não pode impedir a navegação de pastas)
+        try
+        {
+            await AppServices.Settings.SetAsync(SettingsRepository.EpisodesLastFolder, folder);
+        }
+        catch { }
+
         await Task.CompletedTask;
     }
 
@@ -124,6 +145,9 @@ public sealed partial class EpisodesPage : Page
         SetDetailVisible(true);
         MatchLabel.Text = "";
         EpisodeInfoLabel.Text = "";
+        // o botão de reset aparece logo (o arquivo de edição independe da sonda)
+        ep.HasChapterEdits = AppServices.ChapterEdits.ExistsFor(ep.FullPath);
+        UpdateResetButton();
         BindChapters(ep);
 
         if (AppServices.Probe is null)
@@ -194,24 +218,136 @@ public sealed partial class EpisodesPage : Page
             $"{info.AudioStreams.Count} trilha(s) de áudio · {info.SubtitleStreams.Count} legenda(s) · " +
             $"{info.Chapters.Count} capítulos · {TimeSpan.FromSeconds(info.DurationSeconds):hh\\:mm\\:ss}";
 
-        // Se a lista já foi editada (add/remove/reorder), preserva as edições;
-        // só reconstrói a partir dos capítulos originais na primeira sonda.
+        // Grade de capítulos: arquivo de edição salvo vence; sem edição, constrói da
+        // sonda na primeira vez (edições em memória são preservadas)
         if (ep.Chapters.Count == 0)
-        {
-            var ranges = AppServices.Chapters.BuildRanges(info.Chapters, info.DurationSeconds);
-            foreach (var r in ranges)
-                ep.Chapters.Add(CreateChapterVM(r.Number, r.Title, r.StartSeconds, r.EndSeconds, series, keywords));
-            ResequenceChapters();
+            await LoadChapterGridAsync(ep, series, info, keywords);
 
-            // Arquivo sem capítulos ganhou o default (00:00:00.000 → duração): o rótulo
-            // mostra o capítulo efetivo da lista, não o do source
-            EpisodeInfoLabel.Text =
-                $"{info.AudioStreams.Count} trilha(s) de áudio · {info.SubtitleStreams.Count} legenda(s) · " +
-                $"{ep.Chapters.Count} capítulo(s) · {TimeSpan.FromSeconds(info.DurationSeconds):hh\\:mm\\:ss}";
-        }
+        // Arquivo sem capítulos ganhou o default (00:00:00.000 → duração): o rótulo
+        // mostra o capítulo efetivo da lista, não o do source
+        EpisodeInfoLabel.Text =
+            $"{info.AudioStreams.Count} trilha(s) de áudio · {info.SubtitleStreams.Count} legenda(s) · " +
+            $"{ep.Chapters.Count} capítulo(s) · {TimeSpan.FromSeconds(info.DurationSeconds):hh\\:mm\\:ss}";
 
+        UpdateResetButton();
         await UpdateSizeEstimateAsync();
         StatusInfo.IsOpen = false;
+    }
+
+    /// <summary>Origem da grade: grade editada salva (chapters-edits) VENCE os capítulos do
+    /// vídeo — tempos, títulos, classes, marcação e bitrates por capítulo vêm do arquivo;
+    /// sem edição salva, constrói da sonda com a classificação/bitrates da série.</summary>
+    private async Task LoadChapterGridAsync(
+        EpisodeViewModel ep, Series? series, EpisodeInfo info, IReadOnlyList<KeywordRule> keywords)
+    {
+        var saved = AppServices.ChapterEdits.Load(ep.FullPath);
+        if (saved is { Count: > 0 })
+        {
+            foreach (var r in saved)
+                ep.Chapters.Add(CreateChapterVM(r, series));
+            ep.HasChapterEdits = true;
+            return;
+        }
+
+        var ranges = AppServices.Chapters.BuildRanges(info.Chapters, info.DurationSeconds);
+        foreach (var r in ranges)
+            ep.Chapters.Add(CreateChapterVM(r.Number, r.Title, r.StartSeconds, r.EndSeconds, series, keywords));
+        ep.HasChapterEdits = false;
+        await Task.CompletedTask;
+    }
+
+    private ChapterItemViewModel CreateChapterVM(ChapterEditRecord r, Series? series)
+    {
+        var cls = ChapterEditsStore.ParseClass(r.Class);
+        var kbps = r.TargetKbps > 0 ? r.TargetKbps : KbpsFor(cls, series);
+        var chapter = new ChapterItemViewModel
+        {
+            Number = r.Number,
+            Title = r.Title,
+            TimeRange = $"{FormatTime(r.StartSeconds)} → {FormatTime(r.EndSeconds)}",
+            Class = cls,
+            TargetKbps = kbps,
+            TargetLabel = ClassLabel(cls),
+            StartSeconds = r.StartSeconds,
+            EndSeconds = r.EndSeconds,
+            Include = r.Include,
+            IsTemporary = r.IsTemporary,
+            Preset = r.Preset,
+            Cq = r.Cq,
+        };
+        HookChapter(chapter);
+        return chapter;
+    }
+
+    /// <summary>Botão "Resetar Capítulos": só existe com grade editada salva para o vídeo.</summary>
+    private void UpdateResetButton() =>
+        BtnResetChapters.Visibility = _selected?.HasChapterEdits == true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    /// <summary>Grava a grade atual como edição do episódio (chamado ao adicionar/editar/
+    /// remover capítulo). Grade vazia apaga a edição — volta ao comportamento original.</summary>
+    private void SaveChapterEdits(EpisodeViewModel? ep)
+    {
+        if (ep is null)
+            return;
+
+        try
+        {
+            if (ep.Chapters.Count == 0)
+            {
+                AppServices.ChapterEdits.Delete(ep.FullPath);
+                ep.HasChapterEdits = false;
+            }
+            else
+            {
+                AppServices.ChapterEdits.Save(ep.FullPath, [.. ep.Chapters.Select(c =>
+                    new ChapterEditRecord(c.Number, c.Title, c.StartSeconds, c.EndSeconds,
+                        ChapterEditsStore.FormatClass(c.Class), c.TargetKbps, c.Include, c.IsTemporary,
+                        c.Preset, c.Cq))]);
+                ep.HasChapterEdits = true;
+            }
+            UpdateResetButton();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message);
+        }
+    }
+
+    private void BtnResetChapters_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } ep)
+            return;
+
+        try
+        {
+            AppServices.ChapterEdits.Delete(ep.FullPath);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message);
+            return;
+        }
+
+        ep.HasChapterEdits = false;
+        UpdateResetButton();
+
+        // reconstrói a grade a partir do vídeo (probe em cache) com bitrates da série —
+        // exatamente o estado de quem nunca editou este episódio
+        if (ep.Probed is not { } info)
+            return;
+
+        Ui.Safe(async () =>
+        {
+            var keywords = await AppServices.Keywords.GetAllAsync();
+            ep.Chapters.Clear();
+            var ranges = AppServices.Chapters.BuildRanges(info.Chapters, info.DurationSeconds);
+            foreach (var r in ranges)
+                ep.Chapters.Add(CreateChapterVM(r.Number, r.Title, r.StartSeconds, r.EndSeconds, ep.Series, keywords));
+            ResequenceChapters();
+            await UpdateSizeEstimateAsync();
+        }, ex => ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message));
     }
 
     private ChapterItemViewModel CreateChapterVM(int number, string title, double start, double end, Series? series, IReadOnlyList<KeywordRule> keywords)
@@ -280,14 +416,16 @@ public sealed partial class EpisodesPage : Page
 
         var cfg = await GetSelectedCodecConfigAsync();
         foreach (var c in Chapters())
-            c.TargetLabel = BuildTargetLabel(c.Class, c.TargetKbps, cfg);
+            c.TargetLabel = BuildTargetLabel(c.Class, c.TargetKbps, c.Cq, cfg);
 
         await UpdateSizeEstimateAsync();
     }
 
-    private string BuildTargetLabel(BitrateClass cls, int kbps, CodecEncodeConfig cfg) =>
+    /// <summary>Rótulo do alvo do capítulo: em CQ mostra o CQ (o do capítulo quando tem
+    /// override); em bitrate médio mostra os kbps da parte.</summary>
+    private string BuildTargetLabel(BitrateClass cls, int kbps, int cq, CodecEncodeConfig cfg) =>
         cfg.UseConstantQuality
-            ? ClassLabel(cls)
+            ? cq > 0 ? $"{ClassLabel(cls)} · CQ {cq}" : ClassLabel(cls)
             : $"{ClassLabel(cls)} · {kbps} kbps";
 
     private void UpscaleMode_Changed(object sender, SelectionChangedEventArgs e)
@@ -340,7 +478,48 @@ public sealed partial class EpisodesPage : Page
             ChaptersList.ItemsSource is ObservableCollection<ChapterItemViewModel> col)
         {
             col.Remove(item);
+            // a remoção também persiste: sem isso o capítulo removido ressuscitaria
+            // ao reabrir o episódio (a grade salva vence os capítulos do vídeo)
+            RecomputeChapterEnds(_selected);
+            SaveChapterEdits(_selected);
         }
+    }
+
+    /// <summary>Duração de referência da grade: a da sonda; sem sonda, o maior fim já conhecido
+    /// (fallback raro — a sonda roda ao selecionar o episódio).</summary>
+    private double EffectiveDuration(EpisodeViewModel ep) =>
+        ep.Probed is { } info && info.DurationSeconds > 0
+            ? info.DurationSeconds
+            : Chapters().LastOrDefault()?.EndSeconds ?? 0;
+
+    /// <summary>Recalcula o FIM de todos os capítulos da grade: o usuário só informa o início —
+    /// o final é o início do próximo (na linha do tempo) e o do último é a duração do vídeo.</summary>
+    private void RecomputeChapterEnds(EpisodeViewModel? ep)
+    {
+        if (ep is null)
+            return;
+        var chapters = Chapters().ToList();
+        if (chapters.Count == 0)
+            return;
+
+        var duration = EffectiveDuration(ep);
+        var ends = ChapterTimeline.DeriveEnds([.. chapters.Select(c => c.StartSeconds)], duration);
+        for (var i = 0; i < chapters.Count; i++)
+        {
+            chapters[i].EndSeconds = ends[i];
+            chapters[i].TimeRange = $"{FormatTime(chapters[i].StartSeconds)} → {FormatTime(ends[i])}";
+        }
+    }
+
+    /// <summary>Opções de preset do modal: 0 = "usa o da configuração"; depois 1..N na faixa
+    /// do codec selecionado (NVENC p1–p7; SVT/Av1an 1–13).</summary>
+    private (List<string> Labels, int MaxPreset) PresetOptions(CodecEncodeConfig cfg)
+    {
+        var max = cfg.Code.StartsWith("nvenc", StringComparison.Ordinal) ? 7 : 13;
+        var labels = new List<string> { AppServices.Localizer.T("episodes.addDialog.presetDefault") };
+        for (var i = 1; i <= max; i++)
+            labels.Add(i.ToString());
+        return (labels, max);
     }
 
     private async void EditChapter_Click(object sender, RoutedEventArgs e)
@@ -350,16 +529,43 @@ public sealed partial class EpisodesPage : Page
             return;
 
         var t = AppServices.Localizer;
+        var cfg = await GetSelectedCodecConfigAsync();
         var title = new TextBox { Header = t.T("episodes.addDialog.name"), Text = item.Title };
         var start = new TextBox { Header = t.T("episodes.addDialog.start"), Text = FormatTime(item.StartSeconds) };
-        var end = new TextBox { Header = t.T("episodes.addDialog.end"), Text = FormatTime(item.EndSeconds) };
-        var kbps = new NumberBox
+        var (presetLabels, presetMax) = PresetOptions(cfg);
+        var preset = new ComboBox
         {
-            Header = t.T("episodes.addDialog.kbps"),
-            Value = item.TargetKbps,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            SmallChange = 50,
-            Minimum = 0,
+            Header = t.T("episodes.addDialog.preset"),
+            MinWidth = 220,
+            ItemsSource = presetLabels,
+            SelectedIndex = item.Preset > 0 ? Math.Min(item.Preset, presetMax) : 0,
+        };
+        // CQ configurado no codec → o campo do capítulo é o Quality; senão, o bitrate alvo
+        var quality = cfg.UseConstantQuality
+            ? null
+            : new NumberBox
+            {
+                Header = t.T("episodes.addDialog.kbps"),
+                Value = item.TargetKbps,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                SmallChange = 50,
+                Minimum = 0,
+            };
+        var cq = cfg.UseConstantQuality
+            ? new NumberBox
+            {
+                Header = t.T("episodes.addDialog.quality"),
+                Value = item.Cq > 0 ? item.Cq : cfg.Cq,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                SmallChange = 1,
+                Minimum = 0,
+                Maximum = 63,
+            }
+            : null;
+        var temporary = new CheckBox
+        {
+            Content = t.T("episodes.addDialog.temporary"),
+            IsChecked = item.IsTemporary,
         };
         var error = new TextBlock
         {
@@ -371,8 +577,12 @@ public sealed partial class EpisodesPage : Page
         var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
         panel.Children.Add(title);
         panel.Children.Add(start);
-        panel.Children.Add(end);
-        panel.Children.Add(kbps);
+        panel.Children.Add(preset);
+        if (quality is not null)
+            panel.Children.Add(quality);
+        if (cq is not null)
+            panel.Children.Add(cq);
+        panel.Children.Add(temporary);
         panel.Children.Add(error);
 
         var dialog = new ContentDialog
@@ -387,68 +597,126 @@ public sealed partial class EpisodesPage : Page
 
         dialog.PrimaryButtonClick += async (_, args) =>
         {
-            if (!TryParseTime(start.Text, out var startSeconds) || !TryParseTime(end.Text, out var endSeconds) || endSeconds <= startSeconds)
+            var duration = EffectiveDuration(_selected!);
+            if (!TryParseTime(start.Text, out var startSeconds) ||
+                startSeconds <= 0 || startSeconds >= duration ||
+                Chapters().Any(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001))
             {
                 args.Cancel = true;
-                error.Text = t.T("episodes.addDialog.invalid");
+                error.Text = t.T("episodes.addDialog.invalidStart");
                 error.Visibility = Visibility.Visible;
                 return;
             }
 
-            var kbpsValue = double.IsNaN(kbps.Value) ? item.TargetKbps : (int)kbps.Value;
+            var presetValue = preset.SelectedIndex > 0 ? preset.SelectedIndex : 0;
+            var kbpsValue = quality is { } q && !double.IsNaN(q.Value) ? (int)q.Value : item.TargetKbps;
+            var cqValue = cq is { } c && !double.IsNaN(c.Value) ? (int)c.Value : 0;
             var newTitle = string.IsNullOrWhiteSpace(title.Text) ? item.Title : title.Text.Trim();
 
             await Task.Yield(); // deixa o dialog fechar antes de mexer na coleção
+
+            // substitui e REORDENA pelo novo início (a ordem da grade é a linha do tempo);
+            // os fins de toda a grade são derivados de novo
             var index = col.IndexOf(item);
             if (index < 0)
                 return;
 
-            // substitui na mesma posição; classe mantida (reclassificar só ocorre na sonda inicial)
             var updated = new ChapterItemViewModel
             {
                 Number = item.Number,
                 Title = newTitle,
-                TimeRange = $"{FormatTime(startSeconds)} → {FormatTime(endSeconds)}",
+                TimeRange = $"{FormatTime(startSeconds)} → …",
                 Class = item.Class,
                 TargetKbps = kbpsValue,
-                TargetLabel = BuildTargetLabel(item.Class, kbpsValue, await GetSelectedCodecConfigAsync()),
+                TargetLabel = BuildTargetLabel(item.Class, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
                 StartSeconds = startSeconds,
-                EndSeconds = endSeconds,
+                EndSeconds = duration,
                 Include = item.Include,
+                IsTemporary = temporary.IsChecked == true,
+                Preset = presetValue,
+                Cq = cqValue,
             };
             HookChapter(updated);
-            col[index] = updated;
+            col.Remove(item);
+            var insertAt = col.Count;
+            for (var i = 0; i < col.Count; i++)
+            {
+                if (col[i].StartSeconds > startSeconds)
+                {
+                    insertAt = i;
+                    break;
+                }
+            }
+            col.Insert(insertAt, updated);
+            RecomputeChapterEnds(_selected);
+            SaveChapterEdits(_selected);
         };
 
         _ = dialog.ShowAsync();
     }
 
-    private void BtnAddChapter_Click(object sender, RoutedEventArgs e)
+    private async void BtnAddChapter_Click(object sender, RoutedEventArgs e)
     {
         if (ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel>)
             return;
 
         var t = AppServices.Localizer;
+        var cfg = await GetSelectedCodecConfigAsync();
         var query = new TextBox { PlaceholderText = t.T("episodes.newChapter"), Text = t.T("episodes.newChapter") };
         var start = new TextBox { PlaceholderText = "0:00.000" };
         var last = Chapters().LastOrDefault();
         if (last is not null)
-            start.Text = FormatTime(last.EndSeconds);
-        var end = new TextBox { PlaceholderText = "1:00" };
-        var kbps = new NumberBox
+            start.Text = FormatTime(last.StartSeconds);
+        var (presetLabels, presetMax) = PresetOptions(cfg);
+        var preset = new ComboBox
         {
-            Value = _selected?.Series?.EpisodeKbps ?? DefaultEpisodeKbps,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            SmallChange = 50,
-            Minimum = 0,
+            Header = t.T("episodes.addDialog.preset"),
+            MinWidth = 220,
+            ItemsSource = presetLabels,
+            SelectedIndex = 0,
+        };
+        var kbps = cfg.UseConstantQuality
+            ? null
+            : new NumberBox
+            {
+                Value = _selected?.Series?.EpisodeKbps ?? DefaultEpisodeKbps,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                SmallChange = 50,
+                Minimum = 0,
+            };
+        var cq = cfg.UseConstantQuality
+            ? new NumberBox
+            {
+                Header = t.T("episodes.addDialog.quality"),
+                Value = cfg.Cq,
+                SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
+                SmallChange = 1,
+                Minimum = 0,
+                Maximum = 63,
+            }
+            : null;
+        if (kbps is not null)
+            kbps.Header = t.T("episodes.addDialog.kbps");
+        var temporary = new CheckBox { Content = t.T("episodes.addDialog.temporary") };
+        var temporaryHint = new TextBlock
+        {
+            Text = t.T("episodes.addDialog.temporaryHint"),
+            FontSize = 12,
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+            TextWrapping = TextWrapping.Wrap,
         };
         var error = new TextBlock { Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.OrangeRed), TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
 
         var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
         panel.Children.Add(query);
         panel.Children.Add(start);
-        panel.Children.Add(end);
-        panel.Children.Add(kbps);
+        panel.Children.Add(preset);
+        if (kbps is not null)
+            panel.Children.Add(kbps);
+        if (cq is not null)
+            panel.Children.Add(cq);
+        panel.Children.Add(temporary);
+        panel.Children.Add(temporaryHint);
         panel.Children.Add(error);
 
         var dialog = new ContentDialog
@@ -463,30 +731,54 @@ public sealed partial class EpisodesPage : Page
 
         dialog.PrimaryButtonClick += async (_, args) =>
         {
-            if (!TryParseTime(start.Text, out var startSeconds) || !TryParseTime(end.Text, out var endSeconds) || endSeconds <= startSeconds)
+            // SÓ tempo inicial: o final vira o início do próximo capítulo (último = fim do vídeo)
+            var duration = EffectiveDuration(_selected!);
+            if (!TryParseTime(start.Text, out var startSeconds) ||
+                startSeconds <= 0 || startSeconds >= duration ||
+                Chapters().Any(c => Math.Abs(c.StartSeconds - startSeconds) < 0.001))
             {
                 args.Cancel = true;
-                error.Text = t.T("episodes.addDialog.invalid");
+                error.Text = t.T("episodes.addDialog.invalidStart");
                 error.Visibility = Visibility.Visible;
                 return;
             }
 
-            var kbpsValue = double.IsNaN(kbps.Value) ? DefaultEpisodeKbps : (int)kbps.Value;
+            var presetValue = preset.SelectedIndex > 0 ? preset.SelectedIndex : 0;
+            var kbpsValue = kbps is { } k && !double.IsNaN(k.Value) ? (int)k.Value : DefaultEpisodeKbps;
+            var cqValue = cq is { } c && !double.IsNaN(c.Value) ? (int)c.Value : 0;
             var chapter = new ChapterItemViewModel
             {
                 Title = string.IsNullOrWhiteSpace(query.Text) ? t.T("episodes.newChapter") : query.Text.Trim(),
-                TimeRange = $"{FormatTime(startSeconds)} → {FormatTime(endSeconds)}",
+                TimeRange = $"{FormatTime(startSeconds)} → …",
                 Class = BitrateClass.Episode,
                 TargetKbps = kbpsValue,
-                TargetLabel = BuildTargetLabel(BitrateClass.Episode, kbpsValue, await GetSelectedCodecConfigAsync()),
+                TargetLabel = BuildTargetLabel(BitrateClass.Episode, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
                 StartSeconds = startSeconds,
-                EndSeconds = endSeconds,
+                EndSeconds = duration,
+                IsTemporary = temporary.IsChecked == true,
+                Preset = presetValue,
+                Cq = cqValue,
             };
             HookChapter(chapter);
 
             await Task.Yield(); // deixa o dialog fechar antes de mexer na coleção
             if (ChaptersList.ItemsSource is ObservableCollection<ChapterItemViewModel> col)
-                col.Add(chapter);
+            {
+                // entra na posição cronológica — a ordem da grade é a linha do tempo
+                var insertAt = col.Count;
+                for (var i = 0; i < col.Count; i++)
+                {
+                    if (col[i].StartSeconds > startSeconds)
+                    {
+                        insertAt = i;
+                        break;
+                    }
+                }
+                col.Insert(insertAt, chapter);
+                RecomputeChapterEnds(_selected);
+                // adicionar/editar capítulo cria a grade salva do episódio (chapters-edits)
+                SaveChapterEdits(_selected);
+            }
         };
 
         _ = dialog.ShowAsync();
@@ -574,6 +866,7 @@ public sealed partial class EpisodesPage : Page
         var totalParts = 0;
         var enqueued = 0;
         var registered = 0;
+        var totalReused = 0;
 
         foreach (var ep in checkedEpisodes)
         {
@@ -583,8 +876,7 @@ public sealed partial class EpisodesPage : Page
 
             // Ordem de exibição da lista (com edições do usuário) é a ordem das partes;
             // capítulos originais do arquivo NÃO vão pro arquivo gerado.
-            var chapters = ep.Chapters.Where(c => c.Include).ToList();
-            if (chapters.Count == 0)
+            if (ep.Chapters.Count == 0)
                 continue;
 
             var wasUnknown = ep.Series is null;
@@ -605,23 +897,49 @@ public sealed partial class EpisodesPage : Page
                 VideoCodec = codec,
             };
 
-            var order = 1;
-            foreach (var c in chapters)
+            // Order = número do capítulo NA GRADE (c.Number, renumerado a cada edição) — não a
+            // sequência dos marcados: a parte sai "02 - Intro…" igual ao capítulo de origem e
+            // dois jobs parciais do mesmo episódio não sobrescrevem o "01" um do outro.
+            //
+            // Capítulos MARCADOS viram partes a encodear. Capítulos DESMARCADOS cuja parte já
+            // existe na pasta de trabalho são ADOTADOS como Done — o merge final junta tudo
+            // (comportamento do script original), e converter um capítulo isolado não gera
+            // mais um arquivo final só com aquele pedaço.
+            var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
+            var reused = 0;
+            foreach (var c in ep.Chapters)
             {
+                var partPath = JobPaths.PartPath(AppServices.GetOutputDirectory(), baseName, c.Number, c.Title);
+                var alreadyEncoded = !c.Include && File.Exists(partPath);
+                if (!c.Include && !alreadyEncoded)
+                    continue; // não marcado e sem parte pronta — não entra no job
+
+                if (alreadyEncoded)
+                    reused++;
+
                 job.Items.Add(new JobItem
                 {
-                    Order = order++,
+                    Order = c.Number,
+                    State = alreadyEncoded ? JobItemState.Done : JobItemState.Pending,
+                    OutputPath = alreadyEncoded ? partPath : null,
                     Title = c.Title,
                     StartSeconds = c.StartSeconds,
                     EndSeconds = c.EndSeconds,
                     Class = c.Class,
                     TargetKbps = c.TargetKbps,
+                    IsTemporary = c.IsTemporary,
+                    Preset = c.Preset > 0 ? c.Preset : null,
+                    Cq = c.Cq > 0 ? c.Cq : null,
                 });
             }
+
+            if (job.Items.Count == 0)
+                continue;
 
             await AppServices.Jobs.AddAsync(job);
             enqueued++;
             totalParts += job.Items.Count;
+            totalReused += reused;
         }
 
         BtnEnqueue.IsEnabled = true;
@@ -630,7 +948,8 @@ public sealed partial class EpisodesPage : Page
         EnqueueStatus.Text = enqueued == 0
             ? t.T("episodes.nothingEnqueued")
             : t.T("episodes.enqueued", enqueued, totalParts, upscaleInfo) +
-              (registered > 0 ? t.T("episodes.newSeries", registered) : "");
+              (registered > 0 ? t.T("episodes.newSeries", registered) : "") +
+              (totalReused > 0 ? t.T("episodes.reused", totalReused) : "");
 
         ShowStatus(enqueued == 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success,
             enqueued == 0 ? t.T("episodes.nothingEnqueued") : t.T("queue.title"),

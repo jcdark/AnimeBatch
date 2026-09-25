@@ -5,14 +5,30 @@ using System.Globalization;
 
 namespace AnimeBatch.Core.Queueing;
 
-/// <summary>Estatísticas do que está rodando agora (rodapé da aplicação).</summary>
+/// <summary>Estatísticas do que está rodando agora (rodapé da aplicação).
+/// EncodePass > 0 = passada corrente de um encode multipass (SVT 2-pass): 1 = análise,
+/// 2 = final; 0 = passada única. A UI traduz ("passo 1/2") — o Core só reporta o dado.
+/// Rate = bitrate alvo ("500 kbps") ou qualidade constante ("CQ 22") do encode em curso.
+/// ChunksDone/ChunksTotal/Phase = motor Av1an (contador de chunks e fase "scenes"/
+/// "segmenting"/"chunks" — a UI traduz); no av1an não existe "passo 1/2", as passadas
+/// rodam dentro de cada chunk. Workers = quando o encode é paralelo, uma estatística por
+/// slot ativo (a UI mostra uma linha por worker); null = encode sequencial.</summary>
+public record WorkerStat(string Title, double Fps, double Speed, string Rate,
+    int ChunksDone = 0, int ChunksTotal = 0);
+
 public record QueueStats(
     double Fps,
     double Speed,
     double ConvertedMinutes,
     TimeSpan Elapsed,
     TimeSpan? Remaining,
-    string CurrentLabel);
+    string CurrentLabel,
+    int EncodePass = 0,
+    string Rate = "",
+    WorkerStat[]? Workers = null,
+    int ChunksDone = 0,
+    int ChunksTotal = 0,
+    string Phase = "");
 
 /// <summary>Estágio de encode, abstraído para o QueueRunner ser testável sem ffmpeg real
 /// (EncodeService implementa; os testes da fila usam fakes).</summary>
@@ -96,6 +112,7 @@ public class QueueRunner
     private double _jobDoneSeconds;
     private double _jobTotalSeconds;
     private string _currentLabel = "";
+    private string _currentRate = "";
 
     public QueueRunner(QueueRunnerDeps deps)
     {
@@ -174,7 +191,8 @@ public class QueueRunner
             (_sessionConvertedSeconds + _jobDoneSeconds) / 60.0,
             _stopwatch.Elapsed,
             null,
-            _currentLabel);
+            _currentLabel,
+            Rate: _currentRate);
         StatsUpdated?.Invoke(LastStats);
     }
 
@@ -214,6 +232,7 @@ public class QueueRunner
 
             await _d.Jobs.SetStateAsync(job.Id, JobState.Running).ConfigureAwait(false);
             _currentLabel = job.SeriesName ?? Path.GetFileNameWithoutExtension(job.SourcePath);
+            _currentRate = "";
             EmitStats();
             Changed?.Invoke();
 
@@ -301,10 +320,27 @@ public class QueueRunner
             ? upscale.UpscalePartOnnxAsync(req, ct, progress)
             : upscale.UpscalePartAsync(req, ct, progress);
 
-    /// <summary>Pendência de encode montada depois do estágio de upscale (ou direto, sem upscale).</summary>
+    /// <summary>Pendência de encode montada depois do estágio de upscale (ou direto, sem upscale).
+    /// Cfg = config do codec com os overrides DO CAPÍTULO aplicados (Preset/Cq do JobItem
+    /// vencem a config da aba Encodes); Rate = "500 kbps" ou "CQ 22" para o rodapé.</summary>
     private sealed record PendingEncode(
         JobItem Item, string OutPath, string? IntermediatePath,
-        string SourcePath, EncodeService.JobItemRef Ref, string PassLogBase, double Duration);
+        string SourcePath, EncodeService.JobItemRef Ref, string PassLogBase, double Duration,
+        CodecEncodeConfig Cfg, string Rate);
+
+    /// <summary>Config efetiva da parte: overrides por capítulo (Preset/Cq) vencem a config
+    /// do codec. Null nos dois = config original (caminho comum, sem capítulo customizado).</summary>
+    private static CodecEncodeConfig EffectiveCfg(CodecEncodeConfig cfg, JobItem item) =>
+        item.Preset is null && item.Cq is null
+            ? cfg
+            : cfg with { Preset = item.Preset ?? cfg.Preset, Cq = item.Cq ?? cfg.Cq };
+
+    /// <summary>Rótulo do rodapé para o encode em curso: CQ (Qualidade Constante, com o
+    /// override do capítulo quando houver) ou o bitrate alvo da parte.</summary>
+    private static string RateFor(CodecEncodeConfig effectiveCfg, JobItem item) =>
+        effectiveCfg.UseConstantQuality
+            ? $"CQ {effectiveCfg.Cq}"
+            : $"{item.TargetKbps} kbps";
 
     private readonly SemaphoreSlim _dbGate = new(1, 1);
     private readonly object _counterGate = new();
@@ -328,7 +364,7 @@ public class QueueRunner
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
         var outputRoot = _d.OutputDirectory();
-        var workDir = Path.Combine(outputRoot, "AnimeBatch", SafeFolder(baseName));
+        var workDir = JobPaths.WorkDirectory(outputRoot, baseName);
         Directory.CreateDirectory(workDir);
 
         // Dimensões/fps da origem guiam o plano de upscale (fator do modelo, escala final)
@@ -346,12 +382,13 @@ public class QueueRunner
         // Fase 1: upscale (uma parte por vez — o estágio já paraleliza dentro) e montagem
         // das pendências de encode. Fase 2: encode sequencial ou em paralelo por GPU.
         var pending = new List<PendingEncode>();
-        foreach (var item in items)
+        for (var pos = 0; pos < items.Count; pos++)
         {
+            var item = items[pos];
             ct.ThrowIfCancellationRequested();
 
             var outPath = Path.Combine(workDir,
-                $"{item.Order:00} - {ChapterService.SanitizeTitle(item.Title)} - {baseName}.mkv");
+                JobPaths.PartFileName(item.Order, item.Title, baseName));
             var intermediatePath = Path.Combine(workDir, $"ups_{item.Order:00}.mkv");
             var itemDuration = Math.Max(0.001, item.EndSeconds - item.StartSeconds);
 
@@ -367,7 +404,10 @@ public class QueueRunner
             if (upscaledIntermediates && !File.Exists(intermediatePath))
             {
                 await _d.Jobs.SetItemStateAsync(item.Id, JobItemState.Upcaling).ConfigureAwait(false);
-                _currentLabel = $"{job.SeriesName ?? baseName} - {item.Order}/{items.Count} - {item.Title} · upscaling";
+                // rótulo usa POSIÇÃO na lista — o Order pode ter buracos (capítulos marcados
+                // seletivamente viram partes 02, 05… sem os demais)
+                _currentLabel = $"{job.SeriesName ?? baseName} - {pos + 1}/{items.Count} - {item.Title} · upscaling";
+                _currentRate = "";
                 EmitStats();
 
                 var upsProgress = new Progress<EncodeProgress>(p =>
@@ -382,7 +422,8 @@ public class QueueRunner
                         LosslessIntermediate: true, CopyAudio: false, KeepChapters: false, CopySubtitles: false,
                         GpuIds: await ResolveUpscaleGpusAsync(job.UpscaleModel, UpscalerExe(job.UpscaleModel)).ConfigureAwait(false),
                         SourceWidth: info.Width,
-                        OnnxModelsDir: _d.Tools.OnnxModelsDir);
+                        OnnxModelsDir: _d.Tools.OnnxModelsDir,
+                        FpsRatio: info.FpsRatio);
                     await RunUpscaleStageAsync(upscale, req, ct, upsProgress).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -399,6 +440,7 @@ public class QueueRunner
             }
 
             // Com upscale, o intermediário contém SÓ a parte → corte relativo começa em 0
+            var itemCfg = EffectiveCfg(cfg, item);
             pending.Add(new PendingEncode(
                 item, outPath, upscaledIntermediates ? intermediatePath : null,
                 upscaledIntermediates ? intermediatePath : job.SourcePath,
@@ -406,21 +448,32 @@ public class QueueRunner
                     ? new EncodeService.JobItemRef(0, itemDuration, item.TargetKbps)
                     : new EncodeService.JobItemRef(item.StartSeconds, item.EndSeconds, item.TargetKbps),
                 Path.Combine(workDir, $"pass_{item.Order:00}"),
-                itemDuration));
+                itemDuration,
+                itemCfg,
+                RateFor(itemCfg, item)));
         }
 
         // ---- Fase 2: encode das partes pendentes ----
         if (pending.Count > 0)
         {
             // Pool de encode NVENC: workers por placa da tela Hardware (GPU) no espaço
-            // NVENC/nvidia-smi. Sem configuração (ou SVT no CPU): sequencial como antes;
-            // configurado com todas as placas em 0 = erro claro (decisão final do usuário).
-            var cardsJson = isNvenc
-                ? await _d.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false)
-                : null;
-            var pool = isNvenc ? NvencGpuProbe.ResolveWorkers(cardsJson) : null;
-            if (pool is { Count: 0 })
-                throw NoGpuEnabled();
+            // NVENC/nvidia-smi; todas as placas em 0 = erro claro (decisão final do usuário).
+            // Fora do NVENC: encodes paralelos no CPU se o codec pedir (ParallelWorkers 2–3,
+            // seletor da aba Encodes) — cada worker roda o comando SVT normal, SEM -gpu;
+            // 1 worker (default) segue sequencial como sempre.
+            IReadOnlyList<int?>? pool = null;
+            if (isNvenc)
+            {
+                var cardsJson = await _d.Settings.GetAsync(HardwareGpuService.SettingKey).ConfigureAwait(false);
+                var gpuPool = NvencGpuProbe.ResolveWorkers(cardsJson);
+                if (gpuPool is { Count: 0 })
+                    throw NoGpuEnabled();
+                pool = gpuPool?.Cast<int?>().ToList();
+            }
+            else if (cfg.EffectiveParallelWorkers > 1)
+            {
+                pool = Enumerable.Repeat<int?>(null, cfg.EffectiveParallelWorkers).ToList();
+            }
 
             if (pool is { Count: > 0 })
                 await EncodePendingParallelAsync(job, encode, cfg, pending, pool, ct).ConfigureAwait(false);
@@ -432,12 +485,16 @@ public class QueueRunner
         }
 
         // Junção: capítulos cumulativos, uma entrada por parte não-crítica (no encode
-        // paralelo a conclusão pode sair fora de ordem → ordena pelo Order)
+        // paralelo a conclusão pode sair fora de ordem → ordena pelo Order). Capítulos
+        // TEMPORÁRIOS seguem o mesmo tratamento de Critical: o conteúdo entra no vídeo,
+        // mas não ganham entrada de capítulo no final ("como se não existissem") —
+        // servem só para dividir o encode com bitrate próprio.
         var finalPath = Path.Combine(outputRoot, $"{baseName}.mkv");
         var chaptersPath = Path.Combine(workDir, $"{baseName}_chapters.txt");
         var mergeParts = doneParts
             .OrderBy(p => p.Item.Order)
-            .Select(e => (PartPath: e.Path, e.Item.Title, e.Item.StartSeconds, e.Item.EndSeconds, IsCritical: e.Item.Class == BitrateClass.Critical))
+            .Select(e => (PartPath: e.Path, e.Item.Title, e.Item.StartSeconds, e.Item.EndSeconds,
+                IsCritical: e.Item.Class == BitrateClass.Critical || e.Item.IsTemporary))
             .ToList();
         await merge.MergeAsync(mergeParts, finalPath, chaptersPath, ct).ConfigureAwait(false);
 
@@ -467,19 +524,22 @@ public class QueueRunner
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
         var total = pending.Count;
 
-        foreach (var e in pending)
+        for (var pos = 0; pos < pending.Count; pos++)
         {
+            var e = pending[pos];
             ct.ThrowIfCancellationRequested();
 
             await SetItemGatedAsync(e.Item.Id, JobItemState.Encoding).ConfigureAwait(false);
-            _currentLabel = $"{job.SeriesName ?? baseName} - {e.Item.Order}/{total} - {e.Item.Title}";
+            // posição na lista, não Order (que pode pular: só os capítulos marcados entram)
+            _currentLabel = $"{job.SeriesName ?? baseName} - {pos + 1}/{total} - {e.Item.Title}";
+            _currentRate = e.Rate;
             EmitStats();
 
             var progress = new Progress<EncodeProgress>(p => ProgressInternal(job.Id, p));
             try
             {
                 await encode.EncodePartAsync(
-                    e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, cfg, e.Item.TargetKbps, ct, progress).ConfigureAwait(false);
+                    e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, e.Cfg, e.Item.TargetKbps, ct, progress).ConfigureAwait(false);
 
                 await SetItemGatedAsync(e.Item.Id, JobItemState.Done, e.OutPath).ConfigureAwait(false);
                 if (e.IntermediatePath is not null)
@@ -507,20 +567,22 @@ public class QueueRunner
     }
 
     /// <summary>
-    /// Encode paralelo das partes: cada worker pega a próxima pendência e roda um ffmpeg
-    /// apontado (-gpu N) a uma placa do pool (workers por placa = tela Hardware (GPU)).
-    /// Uma parte que falha para de pegar novas mas deixa as em voo terminarem.
+    /// Encode paralelo das partes: cada worker pega a próxima pendência e roda um encode.
+    /// Slots do pool: índice de placa NVENC (-gpu N, workers por placa = tela Hardware (GPU))
+    /// ou null = CPU (SVT em paralelo, comando normal sem -gpu). Uma parte que falha para de
+    /// pegar novas mas deixa as em voo terminarem.
     /// </summary>
     private async Task EncodePendingParallelAsync(
         Job job, IEncodeStage encode, CodecEncodeConfig cfg,
-        IReadOnlyList<PendingEncode> pending, IReadOnlyList<int> pool, CancellationToken ct)
+        IReadOnlyList<PendingEncode> pending, IReadOnlyList<int?> pool, CancellationToken ct)
     {
         var workerCount = Math.Min(pool.Count, pending.Count);
         var name = job.SeriesName ?? Path.GetFileNameWithoutExtension(job.SourcePath);
         _currentLabel = $"{name} - encode paralelo ({pending.Count} partes · {workerCount} workers)";
+        _currentRate = ""; // o rate agora vive por worker (linhas individuais do rodapé)
         EmitStats();
 
-        var agg = new EncodeAggregator(workerCount, (outSum, fps, speed) => ProgressParallel(job.Id, outSum, fps, speed));
+        var agg = new EncodeAggregator(workerCount, (outSum, fps, speed, workers) => ProgressParallel(job.Id, outSum, fps, speed, workers));
         var next = -1;
         var stopPickup = false;
         var workers = new List<Task>();
@@ -537,12 +599,12 @@ public class QueueRunner
                     if (idx >= pending.Count)
                         return;
                     var e = pending[idx];
-                    agg.Begin(slot, e.Duration);
+                    agg.Begin(slot, e.Duration, e.Item.Title, e.Rate);
                     try
                     {
                         await SetItemGatedAsync(e.Item.Id, JobItemState.Encoding).ConfigureAwait(false);
                         await encode.EncodePartAsync(
-                            e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, cfg, e.Item.TargetKbps, ct, progress, gpu).ConfigureAwait(false);
+                            e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, e.Cfg, e.Item.TargetKbps, ct, progress, gpu).ConfigureAwait(false);
 
                         await SetItemGatedAsync(e.Item.Id, JobItemState.Done, e.OutPath).ConfigureAwait(false);
                         if (e.IntermediatePath is not null)
@@ -584,8 +646,9 @@ public class QueueRunner
         }
     }
 
-    /// <summary>Progresso somado de N encodes em voo (fps = soma; speed = média ponderada pela duração).</summary>
-    private void ProgressParallel(int jobId, double outTimeSum, double fpsSum, double speedAvg)
+    /// <summary>Progresso somado de N encodes em voo (fps = soma; speed = média ponderada pela duração)
+    /// + uma estatística por worker ativo para o rodapé multi-linha.</summary>
+    private void ProgressParallel(int jobId, double outTimeSum, double fpsSum, double speedAvg, WorkerStat[] workers)
     {
         double done;
         lock (_counterGate)
@@ -601,12 +664,14 @@ public class QueueRunner
             convertedVideo / 60.0,
             _stopwatch.Elapsed,
             remaining,
-            _currentLabel);
+            _currentLabel,
+            Workers: workers);
         StatsUpdated?.Invoke(LastStats);
         Progress?.Invoke(jobId, Math.Clamp((done + outTimeSum) / Math.Max(0.001, _jobTotalSeconds) * 100, 0, 100));
     }
 
-    /// <summary>Somatório por slot dos encodes em paralelo; publica no QueueRunner a cada relato.</summary>
+    /// <summary>Somatório por slot dos encodes em paralelo; publica no QueueRunner a cada relato.
+    /// Guarda também título/rate/chunks por slot — slots ocupados viram linhas individuais no rodapé.</summary>
     private sealed class EncodeAggregator
     {
         private readonly object _gate = new();
@@ -614,14 +679,22 @@ public class QueueRunner
         private readonly double[] _fps;
         private readonly double[] _speed;
         private readonly double[] _weight;
-        private readonly Action<double, double, double> _report;
+        private readonly string?[] _titles;
+        private readonly string?[] _rates;
+        private readonly int[] _chunksDone;
+        private readonly int[] _chunksTotal;
+        private readonly Action<double, double, double, WorkerStat[]> _report;
 
-        public EncodeAggregator(int slots, Action<double, double, double> report)
+        public EncodeAggregator(int slots, Action<double, double, double, WorkerStat[]> report)
         {
             _outTime = new double[slots];
             _fps = new double[slots];
             _speed = new double[slots];
             _weight = new double[slots];
+            _titles = new string?[slots];
+            _rates = new string?[slots];
+            _chunksDone = new int[slots];
+            _chunksTotal = new int[slots];
             _report = report;
         }
 
@@ -632,11 +705,13 @@ public class QueueRunner
                 _outTime[slot] = p.OutTimeSeconds;
                 _fps[slot] = p.Fps;
                 _speed[slot] = p.Speed;
+                _chunksDone[slot] = p.ChunksDone;
+                _chunksTotal[slot] = p.ChunksTotal;
             }
             Publish();
         });
 
-        public void Begin(int slot, double duration)
+        public void Begin(int slot, double duration, string title, string rate)
         {
             lock (_gate)
             {
@@ -644,7 +719,12 @@ public class QueueRunner
                 _fps[slot] = 0;
                 _speed[slot] = 0;
                 _weight[slot] = duration;
+                _titles[slot] = title;
+                _rates[slot] = rate;
+                _chunksDone[slot] = 0;
+                _chunksTotal[slot] = 0;
             }
+            Publish();
         }
 
         public void End(int slot)
@@ -654,6 +734,10 @@ public class QueueRunner
                 _outTime[slot] = 0;
                 _fps[slot] = 0;
                 _speed[slot] = 0;
+                _titles[slot] = null; // slot livre sai das linhas de worker do rodapé
+                _rates[slot] = null;
+                _chunksDone[slot] = 0;
+                _chunksTotal[slot] = 0;
             }
             Publish();
         }
@@ -661,6 +745,7 @@ public class QueueRunner
         private void Publish()
         {
             double outSum = 0, fpsSum = 0, speedNum = 0, speedDen = 0;
+            var workers = new List<WorkerStat>();
             lock (_gate)
             {
                 for (var i = 0; i < _outTime.Length; i++)
@@ -672,9 +757,12 @@ public class QueueRunner
                         speedNum += _speed[i] * _weight[i];
                         speedDen += _weight[i];
                     }
+                    if (_titles[i] is { } title)
+                        workers.Add(new WorkerStat(title, _fps[i], _speed[i], _rates[i] ?? "",
+                            _chunksDone[i], _chunksTotal[i]));
                 }
             }
-            _report(outSum, fpsSum, speedDen > 0 ? speedNum / speedDen : 0);
+            _report(outSum, fpsSum, speedDen > 0 ? speedNum / speedDen : 0, [.. workers]);
         }
     }
 
@@ -687,7 +775,7 @@ public class QueueRunner
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
         var outputRoot = _d.OutputDirectory();
-        var workDir = Path.Combine(outputRoot, "AnimeBatch", SafeFolder(baseName));
+        var workDir = JobPaths.WorkDirectory(outputRoot, baseName);
         Directory.CreateDirectory(workDir);
 
         var info = await _d.Probe!.ProbeAsync(job.SourcePath, ct).ConfigureAwait(false);
@@ -697,6 +785,7 @@ public class QueueRunner
         _jobTotalSeconds = duration;
         _jobDoneSeconds = 0;
         _currentLabel = $"{job.SeriesName ?? baseName} - upscaling → {job.UpscaleTargetHeight}p";
+        _currentRate = "";
         EmitStats();
 
         // Retomada: arquivo final completo já presente não refaz o upscale
@@ -713,7 +802,8 @@ public class QueueRunner
                     LosslessIntermediate: false, CopyAudio: true, KeepChapters: true, CopySubtitles: true,
                     GpuIds: await ResolveUpscaleGpusAsync(job.UpscaleModel, UpscalerExe(job.UpscaleModel)).ConfigureAwait(false),
                     SourceWidth: info.Width,
-                    OnnxModelsDir: _d.Tools.OnnxModelsDir);
+                    OnnxModelsDir: _d.Tools.OnnxModelsDir,
+                    FpsRatio: info.FpsRatio);
                 await RunUpscaleStageAsync(upscale, req, ct, progress).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -772,7 +862,12 @@ public class QueueRunner
             convertedVideo / 60.0,
             _stopwatch.Elapsed,
             remaining,
-            _currentLabel);
+            _currentLabel,
+            p.Pass,
+            _currentRate,
+            ChunksDone: p.ChunksDone,
+            ChunksTotal: p.ChunksTotal,
+            Phase: p.Phase);
         StatsUpdated?.Invoke(LastStats);
         Progress?.Invoke(jobId, Math.Clamp((_jobDoneSeconds + p.OutTimeSeconds) / Math.Max(0.001, _jobTotalSeconds) * 100, 0, 100));
     }
@@ -796,10 +891,6 @@ public class QueueRunner
         }
     }
 
-    private static string SafeFolder(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var s = new string(name.Where(c => !invalid.Contains(c)).ToArray()).Trim();
-        return string.IsNullOrEmpty(s) ? "episodio" : s;
-    }
+    // SafeFolder virou JobPaths.SafeFolder (Core.Queueing) — compartilhado com a tela de
+    // Episódios, que precisa montar os mesmos caminhos para reaproveitar partes existentes.
 }

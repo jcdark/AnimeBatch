@@ -4,14 +4,14 @@ using Microsoft.EntityFrameworkCore;
 namespace AnimeBatch.Core.Data;
 
 /// <summary>
-/// Banco SQLite embutido, gravado dentro da pasta do próprio aplicativo
-/// (AnimeBatch\data\animebatch.db): 100% local e portátil — mover a pasta do app leva os dados junto.
+/// Banco SQLite embutido, gravado em %LOCALAPPDATA%\AnimeBatch\animebatch.db: sobrevive a
+/// reinstalação/troca do executável (o DbInitializer copia para lá o banco legado da pasta
+/// data\ do app na primeira execução).
 /// </summary>
 public class AnimeBatchDbContext : DbContext
 {
-    /// <summary>Resolve o caminho do banco: junto do executável, em data\.</summary>
-    public static string DefaultDbPath() =>
-        Path.Combine(AppContext.BaseDirectory, "data", "animebatch.db");
+    /// <summary>Resolve o caminho do banco: pasta de dados do usuário (%LOCALAPPDATA%\AnimeBatch).</summary>
+    public static string DefaultDbPath() => AppDataPaths.DbPath;
 
     public string DbPath { get; }
 

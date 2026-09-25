@@ -27,6 +27,10 @@ public class Series
     /// <summary>Caminho do poster no TMDB (ex.: "/abc.jpg"); null = sem imagem.</summary>
     public string? PosterPath { get; set; }
 
+    /// <summary>Capa da série em base64 (JPEG/PNG do TMDB gravado no banco) — sobrevive a
+    /// reinstalação, ao contrário do cache de arquivo antigo em data\posters.</summary>
+    public string? CoverImageBase64 { get; set; }
+
     /// <summary>Sinopse no idioma pt-BR.</summary>
     public string? Overview { get; set; }
 }

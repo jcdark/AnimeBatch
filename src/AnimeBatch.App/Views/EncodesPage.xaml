@@ -47,6 +47,13 @@
                 <CheckBox x:Name="ChkFast" />
                 <CheckBox x:Name="ChkBoost" />
 
+                <StackPanel x:Name="ParallelPanel" Spacing="4">
+                    <ComboBox x:Name="CmbParallel" MinWidth="260" />
+                    <TextBlock x:Name="ParallelHint" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
+                </StackPanel>
+
+                <ComboBox x:Name="CmbScenecut" MinWidth="260" Visibility="Collapsed" />
+
                 <StackPanel Orientation="Horizontal" Spacing="16">
                     <ComboBox x:Name="CmbTune" MinWidth="200" Header="Ajuste do Conversor" />
                     <ComboBox x:Name="CmbProfile" MinWidth="200" Header="Perfil do Conversor" />

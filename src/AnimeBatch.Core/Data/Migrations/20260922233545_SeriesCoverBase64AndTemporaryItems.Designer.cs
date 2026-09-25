@@ -3,6 +3,7 @@ using System;
 using AnimeBatch.Core.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AnimeBatch.Core.Data.Migrations
 {
     [DbContext(typeof(AnimeBatchDbContext))]
-    partial class AnimeBatchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922233545_SeriesCoverBase64AndTemporaryItems")]
+    partial class SeriesCoverBase64AndTemporaryItems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.20");
@@ -116,9 +119,6 @@ namespace AnimeBatch.Core.Data.Migrations
                     b.Property<int>("Class")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("Cq")
-                        .HasColumnType("INTEGER");
-
                     b.Property<double>("EndSeconds")
                         .HasColumnType("REAL");
 
@@ -133,9 +133,6 @@ namespace AnimeBatch.Core.Data.Migrations
 
                     b.Property<string>("OutputPath")
                         .HasColumnType("TEXT");
-
-                    b.Property<int?>("Preset")
-                        .HasColumnType("INTEGER");
 
                     b.Property<double>("StartSeconds")
                         .HasColumnType("REAL");

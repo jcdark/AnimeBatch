@@ -44,6 +44,28 @@ public record CodecEncodeConfig
     /// <summary>"auto" ou o nível (ex.: "4.0").</summary>
     public string Level { get; set; } = "auto";
 
+    /// <summary>
+    /// Encodes em PARALELO no CPU (só codecs SVT; NVENC tem pool próprio por GPU na aba
+    /// Hardware). N partes do job rodando ao mesmo tempo, cada uma com o comando SVT normal.
+    /// 1 = sequencial (como sempre). Clamp 1–3 na leitura.
+    /// </summary>
+    public int ParallelWorkers { get; set; } = 1;
+
+    /// <summary>Clamp defensivo: JSON do banco pode ter valor fora da faixa da UI (1–3).</summary>
+    public int EffectiveParallelWorkers => Math.Clamp(ParallelWorkers, 1, 3);
+
+    /// <summary>
+    /// Av1an: velocidade da análise de cenas (av-scenechange, single-core por design —
+    /// por isso a CPU fica ociosa nessa fase). 0 = precisa (resolução cheia, como sempre);
+    /// 1 = rápida (downscale 720p, novo padrão); 2 = máxima (downscale 360p + método fast).
+    /// As flags só mudam ONDE os chunks são cortados — bitrate/preset/GOP intocados.
+    /// SVT/NVENC: ignorado.
+    /// </summary>
+    public int ScenecutMode { get; set; } = 1;
+
+    /// <summary>Clamp defensivo (0–2): JSON do banco pode ter valor fora da faixa da UI.</summary>
+    public int EffectiveScenecutMode => Math.Clamp(ScenecutMode, 0, 2);
+
     public static CodecEncodeConfig Default(string code) => new()
     {
         Code = code,
@@ -54,6 +76,7 @@ public record CodecEncodeConfig
     public static string[] KnownCodes =>
     [
         "svt_av1", "svt_av1_10bit", "nvenc_av1", "nvenc_av1_10bit",
+        "av1an_av1", "av1an_av1_10bit",
     ];
 }
 

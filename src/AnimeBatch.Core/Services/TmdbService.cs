@@ -56,6 +56,28 @@ public class TmdbService
         return results;
     }
 
+    /// <summary>Busca uma série pelo ID do TMDB (/tv/{id}); null se o ID não existe.
+    /// Usado quando a busca por nome não encontra (títulos alternativos/romaji).</summary>
+    public async Task<TmdbSearchResult?> GetTvAsync(int id, CancellationToken ct = default)
+    {
+        var url = $"https://api.themoviedb.org/3/tv/{id}?api_key={_apiKey}&language=pt-BR";
+        using var resp = await _http.GetAsync(url, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+            return null; // 404 = ID inexistente
+        using var doc = await JsonDocument.ParseAsync(
+            await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), cancellationToken: ct).ConfigureAwait(false);
+        var r = doc.RootElement;
+        var year = r.TryGetProperty("first_air_date", out var d) && d.ValueKind == JsonValueKind.String
+            ? (d.GetString() ?? "") is { Length: >= 4 } s ? s[..4] : null
+            : null;
+        return new TmdbSearchResult(
+            r.GetProperty("id").GetInt32(),
+            r.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+            year,
+            r.TryGetProperty("poster_path", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null,
+            r.TryGetProperty("overview", out var o) ? o.GetString() ?? "" : "");
+    }
+
     /// <summary>Baixa o poster (JPG) no tamanho indicado (w342 é bom pra exibição).</summary>
     public async Task<byte[]> DownloadPosterAsync(string posterPath, string size = "w342", CancellationToken ct = default) =>
         await _http.GetByteArrayAsync(PosterUrl(posterPath, size), ct).ConfigureAwait(false);

@@ -37,20 +37,14 @@ public static class ProcessRunner
     }
 
     /// <summary>Roda um utilitário síncrono com timeout rígido (nvidia-smi etc.) e devolve a
-    /// stdout. NUNCA lança: qualquer falha (exe ausente, timeout, código != 0) devolve ("", false).</summary>
-    public static (string Stdout, bool Ok) Capture(string exe, string args, int timeoutMs)
+    /// stdout. Args DISCRETOS (um token por item) — vão pelo Start/ArgumentList, sem linha de
+    /// comando única: nome de arquivo com espaço/aspas não precisa de quoting. NUNCA lança:
+    /// qualquer falha (exe ausente, timeout, código != 0) devolve ("", false).</summary>
+    public static (string Stdout, bool Ok) Capture(string exe, IReadOnlyList<string>? args, int timeoutMs)
     {
         try
         {
-            var psi = new ProcessStartInfo(exe)
-            {
-                Arguments = args,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            using var proc = Process.Start(psi)!;
+            using var proc = Start(exe, args);
             var stdout = proc.StandardOutput.ReadToEnd();
             proc.StandardError.ReadToEnd();
             if (!proc.WaitForExit(timeoutMs))

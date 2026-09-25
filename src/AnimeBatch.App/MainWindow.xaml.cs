@@ -17,7 +17,29 @@ public sealed partial class MainWindow : Window
 
         AppServices.Queue.StatsUpdated += stats => DispatcherQueue.TryEnqueue(UpdateFooter);
         AppServices.Queue.Changed += () => DispatcherQueue.TryEnqueue(UpdateFooter);
+
+        ApplyAppIcon();
         UpdateFooter();
+    }
+
+    /// <summary>Logo: ícone da janela/barra de tarefas (app desempacotado precisa setar em
+    /// runtime) + imagem no cabeçalho do menu lateral. Falha de ícone não derruba o boot.</summary>
+    private void ApplyAppIcon()
+    {
+        try
+        {
+            var icoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+            if (System.IO.File.Exists(icoPath))
+                AppWindow.SetIcon(icoPath);
+
+            var pngPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (System.IO.File.Exists(pngPath))
+                LogoImage.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new System.Uri(pngPath));
+        }
+        catch
+        {
+            // sem ícone/logo o app continua funcionando normalmente
+        }
     }
 
     /// <summary>Ex.: "AnimeBatch V0.22" — versão vem do csproj (via AssemblyName/Version).</summary>
@@ -52,6 +74,21 @@ public sealed partial class MainWindow : Window
         if (!string.IsNullOrEmpty(s.CurrentLabel))
             parts.Add(s.CurrentLabel);
 
+        // Encode multipass (SVT 2-pass): qual passada está rodando agora
+        if (s.EncodePass > 0)
+            parts.Add(t.T("footer.pass", s.EncodePass));
+
+        // Bitrate alvo (ou CQ) do encode em curso (sequencial — no paralelo o rate é por worker)
+        if (!string.IsNullOrEmpty(s.Rate))
+            parts.Add(t.T("footer.rate", s.Rate));
+
+        // Motor Av1an: contador de chunks (não existe "passo 1/2" — as passadas rodam
+        // dentro de cada chunk) ou a fase do pipeline antes do primeiro chunk
+        if (s.ChunksTotal > 0)
+            parts.Add(t.T("footer.chunks", s.ChunksDone, s.ChunksTotal));
+        else if (s.Phase is "scenes" or "preparing" or "segmenting")
+            parts.Add(t.T($"footer.phase.{s.Phase}"));
+
         parts.AddRange(
         [
             t.T("footer.fps", s.Fps.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)),
@@ -60,6 +97,24 @@ public sealed partial class MainWindow : Window
             s.Remaining is { } r ? t.T("footer.remaining", FormatClock(r)) : t.T("footer.remainingUnknown"),
             t.T("footer.converted", s.ConvertedMinutes.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)),
         ]);
+
+        // Encode PARALELO: uma linha por worker ativo (parte + rate/fps/velocidade próprios),
+        // embaixo da linha de totais — o rodapé cresce, e pode.
+        if (s.Workers is { Length: > 0 })
+        {
+            var lines = new List<string> { string.Join("   ·   ", parts) };
+            foreach (var w in s.Workers)
+            {
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                lines.Add(w.ChunksTotal > 0
+                    ? t.T("footer.workerChunks", w.Title, w.Rate, w.ChunksDone, w.ChunksTotal,
+                        w.Fps.ToString("0.0", inv), w.Speed.ToString("0.00", inv))
+                    : t.T("footer.worker", w.Title, w.Rate,
+                        w.Fps.ToString("0.0", inv), w.Speed.ToString("0.00", inv)));
+            }
+            FooterText.Text = string.Join("\n", lines);
+            return;
+        }
 
         FooterText.Text = string.Join("   ·   ", parts);
     }

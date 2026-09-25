@@ -3,22 +3,15 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Padding="24" RowSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
+    <!-- Página inteira com rolagem: com a janela pequena, nada fica escondido -->
+    <ScrollViewer Padding="24,24,24,24">
+        <StackPanel Spacing="8" MaxWidth="1000" HorizontalAlignment="Left">
 
-        <TextBlock Grid.Row="0" x:Name="TitleText" Text="Configurações" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock x:Name="TitleText" Text="Configurações" FontSize="24" FontWeight="SemiBold" />
 
-        <InfoBar Grid.Row="1" x:Name="FatalInfo" IsOpen="False" IsClosable="False" Severity="Error"
-                 Title="Falha na inicialização" />
+            <InfoBar x:Name="FatalInfo" IsOpen="False" IsClosable="False" Severity="Error"
+                     Title="Falha na inicialização" />
 
-        <StackPanel Grid.Row="2" Spacing="8">
-            <TextBlock x:Name="ToolsHeader" Text="Ferramentas embutidas (pasta tools\ do app)" FontSize="16" FontWeight="SemiBold" />
-            <TextBlock x:Name="DbPathLabel" Foreground="Gray" TextWrapping="Wrap" FontSize="12" />
             <TextBlock x:Name="IntegrationsHeader" Text="Integrações" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
             <StackPanel Orientation="Horizontal" Spacing="8" MaxWidth="640" HorizontalAlignment="Left">
                 <PasswordBox x:Name="TmdbKeyBox" Header="Chave da API do TMDB (v3)" MinWidth="420"
@@ -48,10 +41,18 @@
             <TextBlock x:Name="UpscaleGpusHeader" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,0" />
             <TextBox x:Name="UpscaleGpusBox" MinWidth="280" MaxWidth="720" HorizontalAlignment="Left" />
             <TextBlock x:Name="UpscaleGpusHint" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
-        </StackPanel>
 
-        <ScrollViewer Grid.Row="3">
+            <!-- Base de dados local (AppData): arquivo, tamanho e limpeza -->
+            <TextBlock x:Name="DatabaseHeader" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" />
+            <TextBlock x:Name="DbInfoText" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="BtnClearDb" Click="BtnClearDb_Click" />
+            </StackPanel>
+            <TextBlock x:Name="DbClearHint" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
+
+            <!-- Créditos das ferramentas embarcadas (com rolagem própria da página) -->
+            <TextBlock x:Name="ToolsHeader" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" />
             <StackPanel x:Name="ToolsPanel" Spacing="6" />
-        </ScrollViewer>
-    </Grid>
+        </StackPanel>
+    </ScrollViewer>
 </Page>
