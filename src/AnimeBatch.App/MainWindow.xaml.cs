@@ -52,12 +52,20 @@ public sealed partial class MainWindow : Window
         return $"AnimeBatch (BETA) V{(display.Length > 0 ? display : v is null ? "?" : $"{v.Major}.{v.Minor}")}";
     }
 
-    // O logo do AB no topo do painel substituiu o hamburger de fábrica: clicar alterna o painel.
-    private void PaneToggle_Click(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+    // O logo do AB no topo do painel substitui o hamburger ENQUANTO O PAINEL ESTÁ ABERTO
+    // (clicar nele fecha). O PaneHeader do NavigationView não existe com o painel fechado —
+    // então no fechado o hamburger de fábrica volta, garantindo que sempre haja como reabrir.
+    private void PaneToggle_Click(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = false;
 
-    private void Nav_PaneOpened(NavigationView sender, object args) => PaneTitle.Visibility = Visibility.Visible;
+    private void Nav_PaneOpened(NavigationView sender, object args)
+    {
+        Nav.IsPaneToggleButtonVisible = false; // aberto: logo + nome no comando
+    }
 
-    private void Nav_PaneClosed(NavigationView sender, object args) => PaneTitle.Visibility = Visibility.Collapsed;
+    private void Nav_PaneClosed(NavigationView sender, object args)
+    {
+        Nav.IsPaneToggleButtonVisible = true; // fechado: hamburger de fábrica reabre o painel
+    }
 
     private void UpdateFooter()
     {
