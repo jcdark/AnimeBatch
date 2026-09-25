@@ -255,7 +255,9 @@ public class EncodeService : Queueing.IEncodeStage
         var gate = new object();
         var lastActivityTicks = Environment.TickCount64;
         var lastPct = -1.0;
-        var lastTick = 0L;
+        var smoothPass = -1;
+        var smoothPassTick = 0L;
+        var smoothPassDoneSeconds = 0.0;
         var stalled = false;
         var tail = new StringBuilder();
 
@@ -278,27 +280,44 @@ public class EncodeService : Queueing.IEncodeStage
                 return;
 
             var pass = 0;
-            if (int.TryParse(m.Groups[2].Value, out var taskTotal) && taskTotal > 1 &&
-                int.TryParse(m.Groups[1].Value, out var taskOf))
+            var taskTotal = 0;
+            var taskOf = 0;
+            if (int.TryParse(m.Groups[2].Value, out taskTotal) && taskTotal > 1 &&
+                int.TryParse(m.Groups[1].Value, out taskOf))
                 pass = taskOf;
 
+            // fps MÉDIO do HB (a instantânea pula 20→90 com a cena; a média é estável)
             var fps = 0.0;
-            if (m.Groups[4].Success)
+            if (m.Groups[5].Success && double.TryParse(m.Groups[5].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var avgFps) && avgFps > 0)
+                fps = avgFps;
+            else if (m.Groups[4].Success)
                 double.TryParse(m.Groups[4].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out fps);
 
             double speed;
+            double outTime;
             lock (gate)
             {
                 var now = Environment.TickCount64;
-                // velocidade derivada da variação de percentual (não existe "speed x" no HB)
-                speed = lastPct >= 0 && now > lastTick && pct > lastPct
-                    ? Math.Max(0, (pct - lastPct) / 100.0 * duration / ((now - lastTick) / 1000.0))
-                    : 0.0;
+
+                // velocidade = MÉDIA desde o começo da passada (o delta instantâneo entre
+                // linhas do HB era ruído puro: 0.0x → 8.0x → 3x entre relatos vizinhos)
+                if (pass != smoothPass)
+                {
+                    smoothPass = pass;
+                    smoothPassTick = now;
+                    smoothPassDoneSeconds = 0;
+                }
+                if (lastPct >= 0 && pct > lastPct)
+                    smoothPassDoneSeconds += (pct - lastPct) / 100.0 * duration;
+                speed = smoothPassDoneSeconds / Math.Max(0.001, (now - smoothPassTick) / 1000.0);
                 lastPct = pct;
-                lastTick = now;
+
+                // Multipass: só a ÚLTIMA passada produz saída — as anteriores são análise
+                // (o ffmpeg/HB escreve em NUL). Sem isso o rodapé somava o vídeo 2x no 2-pass.
+                outTime = taskTotal > 1 && taskOf < taskTotal ? 0.0 : pct / 100.0 * duration;
             }
 
-            progress.Report(new EncodeProgress(fps, speed, pct / 100.0 * duration, pass));
+            progress.Report(new EncodeProgress(fps, speed, outTime, pass));
         }
 
         // stdout e stderr carregam linhas do HB (progresso em um, logs em outro) — os dois
@@ -816,21 +835,28 @@ public class EncodeService : Queueing.IEncodeStage
                 ? cfg with { Preset = Math.Min(13, cfg.Preset + 6) }
                 : cfg;
             var (pass1Args, _) = BuildVideoArgs(pass1Cfg, kbps);
-            await RunFfmpegAsync(BuildArgs(sourcePath, item, null, pass1Args, passLogBase, 1, WithPass(progress, 1), duration), ct, WithPass(progress, 1), duration).ConfigureAwait(false);
+            await RunFfmpegAsync(BuildArgs(sourcePath, item, null, pass1Args, passLogBase, 1, WithPass(progress, 1, zeroOutTime: true), duration), ct, WithPass(progress, 1, zeroOutTime: true), duration).ConfigureAwait(false);
         }
 
         var (mainArgs, _) = BuildVideoArgs(cfg, kbps, cudaGpu, boost);
         await RunFfmpegAsync(BuildArgs(sourcePath, item, outputPath, mainArgs, passLogBase, twoPass ? 2 : 0, WithPass(progress, twoPass ? 2 : 0), duration), ct, WithPass(progress, twoPass ? 2 : 0), duration).ConfigureAwait(false);
     }
 
-    /// <summary>Marca cada relato com a passada corrente do encode multipass (SVT 2-pass).</summary>
-    private sealed class PassTag(IProgress<EncodeProgress> inner, int pass) : IProgress<EncodeProgress>
+    /// <summary>Marca cada relato com a passada corrente do encode multipass (SVT 2-pass).
+    /// Na passada 1 (zeroOutTime) o out_time é zerado: ela não produz saída — sem isso o
+    /// rodapé somava o vídeo duas vezes (passada 1 + passada 2) em jobs multipass.</summary>
+    private sealed class PassTag(IProgress<EncodeProgress> inner, int pass, bool zeroOutTime = false) : IProgress<EncodeProgress>
     {
-        public void Report(EncodeProgress p) => inner.Report(p with { Pass = pass });
+        public void Report(EncodeProgress p)
+        {
+            if (zeroOutTime)
+                p = p with { OutTimeSeconds = 0 };
+            inner.Report(p with { Pass = pass });
+        }
     }
 
-    private static IProgress<EncodeProgress>? WithPass(IProgress<EncodeProgress>? progress, int pass) =>
-        progress is null || pass == 0 ? progress : new PassTag(progress, pass);
+    private static IProgress<EncodeProgress>? WithPass(IProgress<EncodeProgress>? progress, int pass, bool zeroOutTime = false) =>
+        progress is null || pass == 0 ? progress : new PassTag(progress, pass, zeroOutTime);
 
     /// <summary>Referência leve a um trecho (evita depender da entidade EF aqui).</summary>
     public record JobItemRef(double StartSeconds, double EndSeconds, int TargetKbps);
