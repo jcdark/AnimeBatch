@@ -181,6 +181,10 @@ public sealed partial class EpisodesPage : Page
         _ = UpdateSizeEstimateAsync();
     }
 
+    /// <summary>Sufixo " - S01E02" para o cabeçalho dos detalhes; vazio sem tag no arquivo.</summary>
+    private static string TagSuffix(string tag) =>
+        tag.Length > 0 ? $" - {tag}" : "";
+
     private IEnumerable<ChapterItemViewModel> Chapters() =>
         ChaptersList.ItemsSource as IEnumerable<ChapterItemViewModel> ?? [];
 
@@ -209,10 +213,11 @@ public sealed partial class EpisodesPage : Page
         var series = await AppServices.Series.FindByEpisodeAsync(ep.FileName);
         ep.Series = series;
 
-        // Apenas o nome da série (bitrates aparecem por capítulo)
+        // Nome da série + tag do episódio (SXXEXX extraído do nome do arquivo)
+        var tag = System.Text.RegularExpressions.Regex.Match(ep.FileName, @"[sS]\d+[eE]\d+").Value;
         MatchLabel.Text = series is not null
-            ? series.Name
-            : AppServices.Localizer.T("episodes.seriesUnregistered");
+            ? series.Name + TagSuffix(tag)
+            : AppServices.Localizer.T("episodes.seriesUnregistered") + TagSuffix(tag);
 
         EpisodeInfoLabel.Text =
             $"{info.AudioStreams.Count} trilha(s) de áudio · {info.SubtitleStreams.Count} legenda(s) · " +

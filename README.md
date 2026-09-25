@@ -2,7 +2,7 @@
 
 *Read this in [Português (Brasil)](README_PTBR.md).*
 
-**AnimeBatch** is a Windows desktop app for batch anime conversion — feed it a season, and it splits episodes into chapter-aware parts, encodes each part with the bitrate it deserves, optionally upscales with AI, and merges everything into a clean MKV with proper chapters. It is the successor of a long-lived Python script (`converter.py`) that did the same job by hand.
+**AnimeBatch** is a Windows desktop app for batch anime conversion — feed it a season, and it splits episodes into chapter-aware parts, encodes each part with the bitrate it deserves, optionally upscales with AI, and merges everything into a clean MKV with proper chapters.
 
 Built with **WinUI 3 / .NET 9** (unpackaged, portable x64), backed by **SQLite**, with ~220 automated tests (unit + real integration runs against the bundled tools).
 
@@ -10,9 +10,9 @@ Built with **WinUI 3 / .NET 9** (unpackaged, portable x64), backed by **SQLite**
 
 - **Quality where it matters.** Each series carries its own bitrates: one for regular episodes, another for openings and endings. Everything targets **AV1** — hardware NVENC or software SVT-AV1 — tuned for the low bitrates where anime actually lives (500 kbps episodes are the norm here).
 - **Chapter-aware pipeline.** Episodes are split into parts (opening / episode / ending / custom chapters), each part is encoded with its own target, and the final merge (mkvmerge) writes cumulative OGM chapters. Chapter ends are derived automatically — you only pick start times.
-- **Frame-exact, sync-safe cutting.** Video is chunked by **frame counts** with the exact fractional frame rate (e.g. `24000/1001`), not by seconds — a subtle difference that used to drift ~200 ms of A/V desync per 24-minute NTSC episode. The pipeline is validated against VFR/NTSC sources.
+- **Frame-exact, sync-safe cutting.** The video is sliced by **frame counts** at the source's exact frame rate — including fractional rates such as 23.976 (`24000/1001`) — so every chunk boundary lands exactly on a frame and the picture never drifts against the audio, no matter how long the episode is. Integer rates (24/25/30 fps) are just as exact; the pipeline is validated against VFR/NTSC sources.
 - **Three AV1 engines, one contract.** NVENC AV1 (8/10-bit) with a quality-boost ladder (spatial/temporal AQ, UHQ tune, temporal filter) that self-heals on older drivers; SVT-AV1 (8/10-bit) with real 2-pass; and **Av1an** — scene-chunked SVT with parallel chunk workers, fast scene-detection modes (720p downscale) and BestSource frame-accurate chunking.
-- **Parallelism you control.** 1–3 CPU encode slots for the software engines, a per-GPU pool for NVENC, and a live status footer showing **one line per worker** with its fps, speed and target bitrate.
+- **Parallelism and multi-GPU.** 1–3 CPU encode slots for the software engines, an NVENC pool that spreads parts across **all your NVIDIA boards**, upscaling that benchmarks and ranks every compatible GPU (NVIDIA, AMD or Intel), and a live status footer showing **one line per worker** with its fps, speed and target bitrate.
 - **Optional AI upscaling.** Real-CUGAN, Real-ESRGAN (ncnn-Vulkan) or AnimeJaNai (ONNX/DirectML, in-process, one session per worker, GPU benchmark and pruning built in).
 - **Local and portable.** No installer, no cloud, no telemetry. The database lives in `%LOCALAPPDATA%\AnimeBatch`, covers are stored in it, and every release is a versioned portable folder with all external tools bundled and credited.
 - **TMDB integration.** Search by name *or* by TMDB ID, link the series, and the cover is downloaded and kept in the database.

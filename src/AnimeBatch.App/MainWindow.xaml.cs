@@ -42,15 +42,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>Ex.: "AnimeBatch V0.22" — versão vem do csproj (via AssemblyName/Version).</summary>
+    /// <summary>Ex.: "AnimeBatch (BETA) V0.46" — versão vem do csproj (via AssemblyName/Version).</summary>
     public static string AppTitle()
     {
         var asm = System.Reflection.Assembly.GetEntryAssembly();
         var v = asm?.GetName().Version;
         var name = asm?.GetName().Name ?? "AnimeBatch"; // AnimeBatchV0.22
         var display = name.StartsWith("AnimeBatchV", StringComparison.Ordinal) ? name["AnimeBatchV".Length..] : "";
-        return $"AnimeBatch V{(display.Length > 0 ? display : v is null ? "?" : $"{v.Major}.{v.Minor}")}";
+        return $"AnimeBatch (BETA) V{(display.Length > 0 ? display : v is null ? "?" : $"{v.Major}.{v.Minor}")}";
     }
+
+    // O logo do AB no topo do painel substituiu o hamburger de fábrica: clicar alterna o painel.
+    private void PaneToggle_Click(object sender, RoutedEventArgs e) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+
+    private void Nav_PaneOpened(NavigationView sender, object args) => PaneTitle.Visibility = Visibility.Visible;
+
+    private void Nav_PaneClosed(NavigationView sender, object args) => PaneTitle.Visibility = Visibility.Collapsed;
 
     private void UpdateFooter()
     {

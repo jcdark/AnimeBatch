@@ -13,8 +13,11 @@
         <NavigationView Grid.Row="0" x:Name="Nav"
                         IsBackButtonVisible="Collapsed"
                         IsSettingsVisible="False"
-                        OpenPaneLength="180"
-                        SelectionChanged="Nav_SelectionChanged">
+                        IsPaneToggleButtonVisible="False"
+                        OpenPaneLength="230"
+                        SelectionChanged="Nav_SelectionChanged"
+                        PaneOpened="Nav_PaneOpened"
+                        PaneClosed="Nav_PaneClosed">
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="NavQueue" Tag="queue" Icon="List" />
                 <NavigationViewItem x:Name="NavEpisodes" Tag="episodes" Icon="Video" />
@@ -28,13 +31,19 @@
                 <NavigationViewItem x:Name="NavSettings" Tag="settings" Icon="Setting" />
             </NavigationView.MenuItems>
 
-            <!-- Logo no cabeçalho do painel lateral -->
+            <!-- O hamburger de fábrica deu lugar ao logo do AB: clicar alterna o painel.
+                 Com o painel aberto o nome aparece por inteiro; fechado, só o logo. -->
             <NavigationView.PaneHeader>
-                <StackPanel Orientation="Horizontal" Spacing="10" Padding="16,10,0,6">
-                    <Image x:Name="LogoImage" Width="28" Height="28" />
-                    <TextBlock x:Name="PaneTitle" Text="AnimeBatch" FontWeight="SemiBold" FontSize="16"
-                               VerticalAlignment="Center" />
-                </StackPanel>
+                <Button x:Name="PaneToggle" Click="PaneToggle_Click"
+                        Background="Transparent" BorderThickness="0" Padding="12,8,12,8"
+                        HorizontalAlignment="Left" HorizontalContentAlignment="Left"
+                        AutomationProperties.Name="AnimeBatch">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Image x:Name="LogoImage" Width="28" Height="28" />
+                        <TextBlock x:Name="PaneTitle" Text="AnimeBatch" FontWeight="SemiBold" FontSize="16"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
             </NavigationView.PaneHeader>
 
             <Frame x:Name="ContentFrame" />

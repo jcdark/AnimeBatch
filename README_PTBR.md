@@ -2,7 +2,7 @@
 
 *Leia isto em [English](README.md).*
 
-**AnimeBatch** é um app desktop Windows para conversão de animes em lote — você aponta uma temporada, e ele divide os episódios em partes por capítulo, encodeia cada parte com o bitrate que ela merece, faz upscale com IA (opcional) e une tudo num MKV limpo com capítulos. É o sucessor de um script Python de longa data (`converter.py`) que fazia o mesmo trabalho à mão.
+**AnimeBatch** é um app desktop Windows para conversão de animes em lote — você aponta uma temporada, e ele divide os episódios em partes por capítulo, encodeia cada parte com o bitrate que ela merece, faz upscale com IA (opcional) e une tudo num MKV limpo com capítulos.
 
 Construído com **WinUI 3 / .NET 9** (desempacotado, portátil x64), banco **SQLite** e ~220 testes automatizados (unitários + integração real contra as tools embarcadas).
 
@@ -10,9 +10,9 @@ Construído com **WinUI 3 / .NET 9** (desempacotado, portátil x64), banco **SQL
 
 - **Qualidade onde importa.** Cada série tem seus próprios bitrates: um para episódios, outro para aberturas e encerramentos. Tudo mira **AV1** — NVENC por hardware ou SVT-AV1 por software — ajustado para os bitrates baixos onde o anime vive de verdade (episódio a 500 kbps é o padrão aqui).
 - **Pipeline consciente de capítulos.** O episódio é dividido em partes (abertura / episódio / encerramento / capítulos manuais), cada parte é encodeada com seu próprio alvo e a união final (mkvmerge) grava capítulos OGM cumulativos. Os fins de capítulo são derivados automaticamente — você só marca os inícios.
-- **Corte por frames, sem dessincronia.** O vídeo é fatiado por **contagem de frames** com a fração exata de fps (ex.: `24000/1001`), não por segundos — uma diferença sutil que acumulava ~200 ms de dessincronia A/V por episódio NTSC de 24 minutos. O pipeline é validado contra fontes VFR/NTSC.
+- **Corte por frames, sem dessincronia.** O vídeo é fatiado por **contagem de frames** no fps exato da origem — inclusive taxas fracionadas como 23.976 (`24000/1001`) — para cada corte cair exatamente num frame e a imagem nunca dessincronizar do áudio, nem em episódios longos. Taxas inteiras (24/25/30 fps) são igualmente exatas; o pipeline é validado contra fontes VFR/NTSC.
 - **Três motores AV1, um mesmo contrato.** NVENC AV1 (8/10 bits) com escada de reforço de qualidade (AQ espacial/temporal, tune UHQ, filtro temporal) que se recupera sozinha em drivers antigos; SVT-AV1 (8/10 bits) com 2-pass de verdade; e **Av1an** — SVT fatiado por cena com chunks paralelos, modos rápidos de detecção de cenas (downscale 720p) e chunking frame-exato com BestSource.
-- **Paralelismo sob controle.** 1–3 slots de encode no CPU para os motores de software, pool por placa para o NVENC, e um rodapé de status vivo mostrando **uma linha por worker** com fps, velocidade e alvo de bitrate.
+- **Paralelismo e múltiplas placas.** 1–3 slots de encode no CPU para os motores de software, pool NVENC que distribui as partes entre **todas as suas placas NVIDIA**, upscale que faz benchmark e ranqueia cada GPU compatível (NVIDIA, AMD ou Intel), e um rodapé de status vivo mostrando **uma linha por worker** com fps, velocidade e alvo de bitrate.
 - **Upscale com IA opcional.** Real-CUGAN, Real-ESRGAN (ncnn-Vulkan) ou AnimeJaNai (ONNX/DirectML in-process, uma sessão por worker, benchmark e pruning de GPU embutidos).
 - **Local e portátil.** Sem instalador, sem nuvem, sem telemetria. O banco vive em `%LOCALAPPDATA%\AnimeBatch`, as capas ficam gravadas nele, e cada release é uma pasta portátil versionada com todas as ferramentas externas embarcadas e com créditos.
 - **Integração com TMDB.** Busca por nome **ou** por ID do TMDB, vínculo da série e capa baixada e guardada no banco.

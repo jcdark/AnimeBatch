@@ -48,7 +48,7 @@
 
         <Grid Grid.Row="2" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="380" />
+                <ColumnDefinition Width="480" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
