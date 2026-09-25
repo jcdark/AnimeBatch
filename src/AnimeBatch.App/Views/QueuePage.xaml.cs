@@ -173,10 +173,16 @@ public sealed partial class QueuePage : Page
         var jobs = await AppServices.Jobs.GetAllOrderedAsync();
         var ids = jobs.Select(j => j.Id).ToList();
 
+        // mantém a seleção do usuário quando a lista é reconstruída: a auto-remoção de um
+        // job concluído reconstruía as rows e o ↑/↓ morria em silêncio (seleção perdida)
+        var selectedId = (JobsList.SelectedItem as JobRowViewModel)?.Id;
+
         if (_rows is null || !_rows.Select(r => r.Id).SequenceEqual(ids))
         {
             _rows = new ObservableCollection<JobRowViewModel>(jobs.Select(j => new JobRowViewModel(j)));
             JobsList.ItemsSource = _rows;
+            if (selectedId is { } sid)
+                JobsList.SelectedItem = _rows.FirstOrDefault(r => r.Id == sid);
         }
 
         foreach (var job in jobs)
@@ -196,8 +202,18 @@ public sealed partial class QueuePage : Page
     private void MoveSelected(int delta) =>
         Ui.Safe(async () =>
         {
-            if (Selected?.Job is not { State: JobState.Pending or JobState.Paused } job)
+            if (Selected?.Job is not { } job)
                 return;
+            // itens em conversão/concluídos/com erro não mudam de lugar — sem esse aviso o
+            // clique em ↑/↓ morria em silêncio e parecia que a reordenação estava quebrada
+            if (job.State is not (JobState.Pending or JobState.Paused))
+            {
+                Info.Severity = InfoBarSeverity.Warning;
+                Info.Title = AppServices.Localizer.T("queue.moveBlockedTitle");
+                Info.Message = AppServices.Localizer.T("queue.moveBlocked");
+                Info.IsOpen = true;
+                return;
+            }
             await AppServices.Jobs.MoveAsync(job.Id, delta);
             await LoadAsync();
         }, ShowError);

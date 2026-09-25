@@ -37,6 +37,8 @@
     "queue.top": "⤒ Priorizar (topo)",
     "queue.remove": "Remover",
     "queue.parts": "{0} partes",
+    "queue.moveBlockedTitle": "Reordenação",
+    "queue.moveBlocked": "Só itens Pendentes ou Pausados mudam de lugar — o item em conversão (ou já concluído/com erro) não é reordenado.",
     "queue.info.title": "Execução chega no próximo marco",
     "queue.info.msg": "Os jobs aqui aparecem na ordem do banco (Order); reordenação e retomada já funcionam.",
     "queue.start": "▶ Iniciar conversão",

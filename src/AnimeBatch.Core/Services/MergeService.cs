@@ -60,6 +60,10 @@ public class MergeService : Queueing.IMergeStage
         {
             if (i > 0)
                 args.Add("+"); // append ao anterior
+            // Partes codificadas pelo HandBrake CARREGAM os capítulos da origem — sem o
+            // --no-chapters o mkvmerge prefere os capítulos das entradas e descarta o
+            // nosso chapters.txt (o final saía com os capítulos do arquivo original).
+            args.Add("--no-chapters");
             args.Add(parts[i].PartPath);
         }
 

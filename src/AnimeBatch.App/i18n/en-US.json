@@ -37,6 +37,8 @@
     "queue.top": "⤒ Prioritize (top)",
     "queue.remove": "Remove",
     "queue.parts": "{0} parts",
+    "queue.moveBlockedTitle": "Reordering",
+    "queue.moveBlocked": "Only Pending or Paused items can be moved — the item being converted (or already done/failed) keeps its place.",
     "queue.info.title": "Execution arrives in the next milestone",
     "queue.info.msg": "Jobs here follow the database order; reordering and resume already work.",
     "queue.start": "▶ Start conversion",
