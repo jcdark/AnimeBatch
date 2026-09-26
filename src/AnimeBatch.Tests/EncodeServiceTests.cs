@@ -420,4 +420,39 @@ public class EncodeServiceTests
             500, "i", "o", "t", "l.log", 4, "-c:a copy");
         Assert.DoesNotContain("-p", fast);
     }
+
+    // ---- Workers internos do av1an limitados pela RAM (cada SvtAv1EncApp ~2,5 GB) ----
+
+    [Fact]
+    public void Av1an_internal_workers_limita_pela_ram_fisica()
+    {
+        const long gb = 1_000_000_000;
+        // 48 GB sequencial (máquina do dono): 80% / 2,75 GB ≈ 13 processos, não 32
+        Assert.Equal(13, EncodeService.Av1anInternalWorkers(32, 1, 48 * gb));
+        // 2 partes em paralelo: o total (paralelo × interno) é que cabe na RAM
+        Assert.Equal(6, EncodeService.Av1anInternalWorkers(32, 2, 48 * gb));
+        // RAM de sobra: manda o CPU
+        Assert.Equal(8, EncodeService.Av1anInternalWorkers(8, 1, 64 * gb));
+        // RAM desconhecida (0): comportamento antigo, só CPU
+        Assert.Equal(8, EncodeService.Av1anInternalWorkers(8, 1, 0));
+        // máquina fraca: no mínimo 1 worker
+        Assert.Equal(1, EncodeService.Av1anInternalWorkers(8, 1, 4 * gb));
+    }
+
+    // ---- Pré-corte: -progress pipe:1 obrigatório (rodapé vivo durante o corte) ----
+
+    [Fact]
+    public void Precut_args_tem_progress_e_parametros_do_corte()
+    {
+        var args = EncodeService.BuildPrecutArgs("src.mkv", 600.5, 180, "yuv420p10le", "precut_out.mkv");
+
+        var joined = string.Join(' ', args);
+        Assert.Contains("-progress pipe:1", joined);
+        Assert.Contains("-nostats", joined);
+        Assert.Contains("-ss 600.5", joined);
+        Assert.Contains("-t 180", joined);
+        Assert.Contains("-qp 0", joined);
+        Assert.Contains("-pix_fmt yuv420p10le", joined);
+        Assert.Equal("precut_out.mkv", args[^1]);
+    }
 }
