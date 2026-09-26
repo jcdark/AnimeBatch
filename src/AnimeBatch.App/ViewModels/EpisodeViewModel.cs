@@ -1,3 +1,4 @@
+using AnimeBatch.App.Services;
 using AnimeBatch.Core.Models;
 using AnimeBatch.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -34,6 +35,15 @@ public partial class EpisodeViewModel : ObservableObject
         FullPath = fullPath;
         FileName = System.IO.Path.GetFileName(fullPath);
     }
+}
+
+/// <summary>Estado da PARTE no disco para o capítulo: nenhum arquivo, arquivo cujo tempo
+/// bate com o capítulo (✓) ou arquivo com tempo diferente (✗ — removível pela lista).</summary>
+public enum PartFileStatus
+{
+    None,
+    Ok,
+    Mismatch,
 }
 
 public partial class ChapterItemViewModel : ObservableObject
@@ -76,8 +86,24 @@ public partial class ChapterItemViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsTemporary { get; set; }
 
+    /// <summary>Parte deste capítulo já existe na pasta de trabalho? E o tempo bate?
+    /// Avaliado pela tela (probe das partes existentes, com cache por arquivo).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OkVisibility), nameof(MismatchVisibility), nameof(OkTooltip), nameof(MismatchTooltip))]
+    public partial PartFileStatus FileStatus { get; set; } = PartFileStatus.None;
+
     public Microsoft.UI.Xaml.Visibility TemporaryVisibility =>
         IsTemporary ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility OkVisibility =>
+        FileStatus == PartFileStatus.Ok ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility MismatchVisibility =>
+        FileStatus == PartFileStatus.Mismatch ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public string OkTooltip => AppServices.Localizer.T("episodes.partOkTooltip");
+
+    public string MismatchTooltip => AppServices.Localizer.T("episodes.partMismatchTooltip");
 
     partial void OnIsTemporaryChanged(bool value) =>
         OnPropertyChanged(nameof(TemporaryVisibility));

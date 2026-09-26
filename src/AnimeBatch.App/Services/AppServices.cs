@@ -208,6 +208,17 @@ internal static class AppServices
             OutputDirectory = GetOutputDirectory,
             LogCrash = LogCrash,
             CompletionSound = PlayCompletionSound,
+            // "quando terminar" da fila: ações de energia na hora (thread de fundo serve);
+            // "exit" fecha a janela principal na UI thread
+            WhenDone = action =>
+            {
+                if (action == "exit")
+                {
+                    App.MainWindow.DispatcherQueue.TryEnqueue(() => App.MainWindow.Close());
+                    return;
+                }
+                SystemPower.Run(action);
+            },
         });
 
         Localizer = new Localization();

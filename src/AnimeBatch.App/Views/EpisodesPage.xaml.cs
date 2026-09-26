@@ -149,6 +149,7 @@ public sealed partial class EpisodesPage : Page
         ep.HasChapterEdits = AppServices.ChapterEdits.ExistsFor(ep.FullPath);
         UpdateResetButton();
         BindChapters(ep);
+        _ = EvaluatePartFilesAsync(ep);
 
         if (AppServices.Probe is null)
         {
@@ -173,6 +174,7 @@ public sealed partial class EpisodesPage : Page
         {
             ResequenceChapters();
             _ = UpdateSizeEstimateAsync();
+            _ = EvaluatePartFilesAsync(ep); // reordenar renumera → os NOMES das partes mudam
         };
 
         ChaptersList.ItemsSource = ep.Chapters;
@@ -514,6 +516,99 @@ public sealed partial class EpisodesPage : Page
             chapters[i].EndSeconds = ends[i];
             chapters[i].TimeRange = $"{FormatTime(chapters[i].StartSeconds)} → {FormatTime(ends[i])}";
         }
+
+        // os tempos mudaram → o status ✓/✗ das partes no disco pode ter mudado
+        _ = EvaluatePartFilesAsync(ep);
+    }
+
+    // ---- Status das partes no disco (✓ tempo bate · ✗ não bate, clicável p/ remover) ----
+
+    /// <summary>Cache de duração das partes por caminho+mtime: a grade reavalia os status a
+    /// cada edição/reordenação e re-probe todos os arquivos a cada mudança seria caro.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        string, (DateTime Mtime, double Duration)> PartProbeCache = new();
+
+    /// <summary>Para cada capítulo, olha a parte correspondente na pasta de trabalho
+    /// (AnimeBatch/{base}/NN - Título - base.mkv): sem arquivo = sem ícone; com arquivo,
+    /// ✓ quando a duração do arquivo bate com a do capítulo, ✗ vermelho quando não bate.</summary>
+    private async Task EvaluatePartFilesAsync(EpisodeViewModel? ep)
+    {
+        if (ep is null || AppServices.Probe is null)
+            return;
+        var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
+        var root = AppServices.GetOutputDirectory();
+        foreach (var c in ep.Chapters)
+        {
+            double? fileDuration = null;
+            var path = JobPaths.PartPath(root, baseName, c.Number, c.Title);
+            if (File.Exists(path))
+                fileDuration = await ProbePartDurationAsync(path).ConfigureAwait(true);
+
+            c.FileStatus = fileDuration is null
+                ? PartFileStatus.None
+                : Math.Abs(fileDuration.Value - (c.EndSeconds - c.StartSeconds)) <= 0.5
+                    ? PartFileStatus.Ok
+                    : PartFileStatus.Mismatch;
+        }
+    }
+
+    private async Task<double?> ProbePartDurationAsync(string path)
+    {
+        var mtime = File.GetLastWriteTimeUtc(path);
+        var key = path.ToUpperInvariant();
+        if (PartProbeCache.TryGetValue(key, out var cached) && cached.Mtime == mtime)
+            return cached.Duration;
+
+        EpisodeInfo info;
+        try
+        {
+            info = await AppServices.Probe!.ProbeAsync(path).ConfigureAwait(true);
+        }
+        catch
+        {
+            return null; // arquivo travado/corrompido — sem veredito por enquanto
+        }
+        PartProbeCache[key] = (mtime, info.DurationSeconds);
+        return info.DurationSeconds;
+    }
+
+    /// <summary>Clique no ✗ vermelho: a parte existe mas o tempo não bate com o capítulo —
+    /// pergunta se o usuário quer remover o arquivo da pasta.</summary>
+    private async void RemovePartFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: ChapterItemViewModel c } || _selected is null)
+            return;
+        var t = AppServices.Localizer;
+        var baseName = Path.GetFileNameWithoutExtension(_selected.FullPath);
+        var path = JobPaths.PartPath(AppServices.GetOutputDirectory(), baseName, c.Number, c.Title);
+        if (!File.Exists(path))
+        {
+            await EvaluatePartFilesAsync(_selected);
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = t.T("episodes.partRemoveTitle"),
+            Content = t.T("episodes.partRemoveMsg", path, FormatTime(c.EndSeconds - c.StartSeconds)),
+            PrimaryButtonText = t.T("episodes.partRemoveYes"),
+            CloseButtonText = t.T("episodes.addDialog.cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(InfoBarSeverity.Error, path, ex.Message);
+        }
+        PartProbeCache.TryRemove(path.ToUpperInvariant(), out _);
+        await EvaluatePartFilesAsync(_selected);
     }
 
     /// <summary>Opções de preset do modal: 0 = "usa o da configuração"; depois 1..N na faixa

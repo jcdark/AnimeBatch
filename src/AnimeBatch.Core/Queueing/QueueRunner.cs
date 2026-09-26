@@ -90,6 +90,11 @@ public sealed class QueueRunnerDeps
 
     /// <summary>Som de conclusão por episódio (o App toca; o Core não conhece áudio). Null = silêncio.</summary>
     public Action? CompletionSound { get; init; }
+
+    /// <summary>Ação "quando terminar" da fila (setting queue.whenDone: none/shutdown/
+    /// hibernate/sleep/logoff/lock/exit). O Core não executa nada — o App decide como
+    /// desligar/fechar. Null = nada.</summary>
+    public Action<string>? WhenDone { get; init; }
 }
 
 /// <summary>
@@ -260,6 +265,12 @@ public class QueueRunner
                 // segue pro próximo job da fila
             }
         }
+
+        // A fila esvaziou de verdade (não foi Parar/Pausar — o cancelamento retorna antes):
+        // dispara a ação "quando terminar" escolhida na tela da fila.
+        var whenDone = await _d.Settings.GetAsync(SettingsRepository.QueueWhenDone).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(whenDone) && whenDone != "none")
+            _d.WhenDone?.Invoke(whenDone);
     }
 
     /// <summary>Primeira linha do erro, enxuta o bastante pra caber na row da fila.</summary>

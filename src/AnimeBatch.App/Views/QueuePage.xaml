@@ -24,6 +24,8 @@
             <Button x:Name="BtnClear" Click="BtnClear_Click" />
             <CheckBox x:Name="ChkAutoRemove" VerticalAlignment="Center" Checked="ChkAutoRemove_Changed"
                       Unchecked="ChkAutoRemove_Changed" />
+            <ComboBox x:Name="CmbWhenDone" MinWidth="190" VerticalAlignment="Center"
+                      SelectionChanged="CmbWhenDone_SelectionChanged" />
         </StackPanel>
 
         <StackPanel Grid.Row="2">

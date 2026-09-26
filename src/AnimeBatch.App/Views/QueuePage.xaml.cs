@@ -108,12 +108,39 @@ public sealed partial class QueuePage : Page
     }
 
     private bool _autoRemoveLoaded;
+    private bool _whenDoneLoaded;
+
+    private static readonly (string Value, string LabelKey)[] WhenDoneOptions =
+    [
+        ("none", "queue.whenDone.none"),
+        ("shutdown", "queue.whenDone.shutdown"),
+        ("hibernate", "queue.whenDone.hibernate"),
+        ("sleep", "queue.whenDone.sleep"),
+        ("logoff", "queue.whenDone.logoff"),
+        ("lock", "queue.whenDone.lock"),
+        ("exit", "queue.whenDone.exit"),
+    ];
 
     private async Task LoadAutoRemovePrefAsync()
     {
         ChkAutoRemove.IsChecked = await AppServices.Settings
             .GetAsync(SettingsRepository.QueueAutoRemove) == "true";
         _autoRemoveLoaded = true; // evita gravar de volta a preferência durante a carga
+
+        var whenDone = await AppServices.Settings.GetAsync(SettingsRepository.QueueWhenDone);
+        var t = AppServices.Localizer;
+        CmbWhenDone.ItemsSource = WhenDoneOptions.Select(o => t.T(o.LabelKey)).ToList();
+        CmbWhenDone.SelectedIndex = Math.Max(0, Array.FindIndex(WhenDoneOptions, o => o.Value == whenDone));
+        _whenDoneLoaded = true;
+    }
+
+    private void CmbWhenDone_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_whenDoneLoaded)
+            return;
+        Ui.Safe(async () => await AppServices.Settings.SetAsync(
+            SettingsRepository.QueueWhenDone,
+            WhenDoneOptions[Math.Clamp(CmbWhenDone.SelectedIndex, 0, WhenDoneOptions.Length - 1)].Value), ShowError);
     }
 
     /// <summary>Recarrega a fila capturando exceção — Load roda a cada evento da fila e
@@ -162,6 +189,14 @@ public sealed partial class QueuePage : Page
         BtnRemove.Content = t.T("queue.remove");
         BtnClear.Content = t.T("queue.clear");
         ChkAutoRemove.Content = t.T("queue.autoRemove");
+        CmbWhenDone.Header = t.T("queue.whenDone");
+        if (CmbWhenDone.ItemsSource is List<string> whenDoneItems && whenDoneItems.Count == WhenDoneOptions.Length)
+        {
+            // relocaliza mantendo a seleção (troca de idioma reconstroi os rótulos)
+            var sel = CmbWhenDone.SelectedIndex;
+            CmbWhenDone.ItemsSource = WhenDoneOptions.Select(o => t.T(o.LabelKey)).ToList();
+            CmbWhenDone.SelectedIndex = sel;
+        }
     }
 
     /// <summary>

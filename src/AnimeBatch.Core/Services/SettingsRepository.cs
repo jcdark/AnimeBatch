@@ -12,6 +12,8 @@ public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
     public const string OutputDirectory = "output.dir";
     public const string SourceDirectory = "source.dir";
     public const string QueueAutoRemove = "queue.autoRemove";
+    /// <summary>Ação "quando terminar" da fila: none/shutdown/hibernate/sleep/logoff/lock/exit.</summary>
+    public const string QueueWhenDone = "queue.whenDone";
     public const string UpscaleGpus = "upscale.gpus";
     /// <summary>Minutos sem saída do ffmpeg antes de matar o processo por stall
     /// (número; vazio/inválido = 10). Lido pelo QueueRunner ao montar o EncodeService.</summary>
