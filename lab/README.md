@@ -80,3 +80,19 @@ powershell -ExecutionPolicy Bypass -File lab\tools\run-baseline.ps1 -Label svt-f
   o driver NVIDIA destrava o braço NVENC do baseline.
 - **Métricas**: VMAF (modelo padrão v0.6.1), SSIM float, PSNR, tempo de parede (2 passadas
   inclusas), fps efetivo = frames/tempo, kbps/size por ffprobe.
+
+## Fase 5 — CUDA (SAD full-pel no fork)
+
+- Módulo `Source/Lib/CUDA` no fork (env `SVA_CUDA=1`; hook troca o ponteiro RTCD
+  `svt_sad_loop_kernel` — cobre HME L0/L1/L2, prehme e pd; fallback CPU automático em
+  qualquer falha). Build: `E:\av1-refs\build-fork-cuda.bat` (`SVA_ENABLE_CUDA=ON`, sm_89/sm_120).
+- Gate: `lab\tools\verify-cuda-parity.ps1` — mesmo binário, A (CPU) vs B (GPU) vs B2 (GPU de
+  novo) em `--lp 1`, exige sha256 do .ivf idêntico.
+- Resultado v1 (`resultados\cuda-parity-v1.md`): saída **byte-exata** (kernel bit-exato; GPU
+  engajada, 51% util) e determinismo OK — mas **per-call offload é 14,7× mais lento**
+  (81,3s CPU vs 1197,4s GPU no clip01 45s, p6 2-pass): cada chamada (centenas/frame) paga
+  cópia PCIe + sync serializada em lock. O ganho de 10x do cuda-lab só existe com batching.
+- Conclusão (regra "avança só com ganho real"): kernel provado, integração por-chamada
+  reprovada. Único caminho GPU viável para o ME: acumular descritores de busca do frame e
+  disparar 1 kernel por frame (mudança de fluxo no ME do fork). Sem isso, a GPU segue nos
+  papéis que já tem (ONNX/DirectML no upscale, NVDEC no QC).
