@@ -43,14 +43,6 @@ public class ToolsLocator
         Av1anPath = Locate("av1an.exe");
         SvtAv1EncAppPath = Locate("SvtAv1EncApp.exe");
         VspipePath = Locate("vspipe.exe");
-        // Fork híbrido (opcional, projeto AV1 híbrido IA): SvtAv1EncApp modificado em
-        // tools\svt-av1-hybrid\ com poda de candidatos por prior aprendido. Caminho DIRETO
-        // (Locate varre tools\ inteira e poderia achar o SvtAv1EncApp stock em vez do fork).
-        var hybridDir = Path.Combine(_toolsDir, "svt-av1-hybrid");
-        var hybridExe = Path.Combine(hybridDir, "SvtAv1EncApp.exe");
-        SvtHybridEncAppPath = File.Exists(hybridExe) ? hybridExe : null;
-        var priorFile = Path.Combine(hybridDir, "ai_prior.txt");
-        HybridPriorFile = File.Exists(priorFile) ? priorFile : null;
         // Modelos do motor ONNX (AnimeJaNai): tools\models-onnx na raiz (ou subpasta).
         OnnxModelsDir = Directory.Exists(Path.Combine(_toolsDir, "models-onnx"))
             ? Path.Combine(_toolsDir, "models-onnx")
@@ -70,10 +62,6 @@ public class ToolsLocator
     public string? Av1anPath { get; }
     public string? SvtAv1EncAppPath { get; }
     public string? VspipePath { get; }
-    public string? SvtHybridEncAppPath { get; }
-
-    /// <summary>Tabela de prior aprendida do fork híbrido (null se não existe).</summary>
-    public string? HybridPriorFile { get; }
 
     /// <summary>Pasta tools\ detectada (null se não existe) — base do PATH extra que o
     /// av1an precisa receber para encontrar ffmpeg/SvtAv1EncApp.</summary>

@@ -106,8 +106,7 @@ public sealed partial class EncodesPage : Page
 
     private bool IsNvenc => _current?.Code.StartsWith("nvenc", StringComparison.Ordinal) == true;
 
-    private bool IsAv1an => _current?.Code.StartsWith("av1an", StringComparison.Ordinal) == true
-                         || _current?.Code.StartsWith("hybrid", StringComparison.Ordinal) == true;
+    private bool IsAv1an => _current?.Code.StartsWith("av1an", StringComparison.Ordinal) == true;
 
     private async void CmbCodec_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

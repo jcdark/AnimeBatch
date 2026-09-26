@@ -47,14 +47,12 @@ public class EncodeService : Queueing.IEncodeStage
     private readonly string? _av1anEnvPath;
     private readonly string? _ffprobe;
     private readonly TimeSpan _stallTimeout;
-    private readonly string? _hybridSvtEncApp;
-    private readonly string? _hybridPriorFile;
 
     /// <summary>Intervalo do tick do tail do logfile do av1an (1s em produção; injetável nos testes).</summary>
     private readonly int _av1anTailTickMs;
 
     /// <summary>Plugin BestSource do VapourSynth presente na máquina: chunks VS frame-exatos
-    /// (-m bestsource) em vez da segmentação por ffmpeg do Hybrid (fase silenciosa de minutos).</summary>
+    /// (-m bestsource) em vez da segmentação por ffmpeg (fase silenciosa de minutos).</summary>
     private readonly bool _av1anBestSource;
 
     /// <summary>handBrakeCliPath: quando presente, TODOS os encodes passam pelo HandBrakeCLI
@@ -68,8 +66,7 @@ public class EncodeService : Queueing.IEncodeStage
     /// origem e decidir o pré-corte (o av1an rust não tem --trim).
     public EncodeService(string ffmpegPath, TimeSpan? stallTimeout = null, string? handBrakeCliPath = null,
         string? av1anPath = null, string? svtAv1EncAppPath = null, string? av1anEnvPath = null, string? ffprobePath = null,
-        int? av1anTailTickMs = null, bool av1anBestSource = false,
-        string? hybridSvtEncAppPath = null, string? hybridPriorFile = null)
+        int? av1anTailTickMs = null, bool av1anBestSource = false)
     {
         _ffmpeg = ffmpegPath;
         _handBrakeCli = handBrakeCliPath;
@@ -80,8 +77,6 @@ public class EncodeService : Queueing.IEncodeStage
         _stallTimeout = stallTimeout ?? DefaultStallTimeout;
         _av1anTailTickMs = av1anTailTickMs ?? 1000;
         _av1anBestSource = av1anBestSource;
-        _hybridSvtEncApp = hybridSvtEncAppPath;
-        _hybridPriorFile = hybridPriorFile;
     }
 
     /// <summary>
@@ -460,7 +455,7 @@ public class EncodeService : Queueing.IEncodeStage
     }
 
     /// <summary>
-    /// Linha do av1an para os códigos av1an_*/hybrid_*. --no-defaults SEMPRE: os defaults deles
+    /// Linha do av1an para os códigos av1an_*. --no-defaults SEMPRE: os defaults deles
     /// injetam --crf 25, que conflita com --rc 1/--tbr (o svt 4.x nem abre o encoder), e
     /// usam --keyint 0, que o svt 4.x rejeita em VBR ("intra period must be > 0") — GOP
     /// fixo de 240 frames (10s a 24fps; os cortes de cena do av-scenechange continuam
@@ -517,14 +512,11 @@ public class EncodeService : Queueing.IEncodeStage
     private async Task EncodeWithAv1anAsync(
         string sourcePath, JobItemRef item, string outputPath, string passLogBase,
         CodecEncodeConfig cfg, int kbps, double duration,
-        CancellationToken ct, IProgress<EncodeProgress>? progress, bool hybrid = false)
+        CancellationToken ct, IProgress<EncodeProgress>? progress)
     {
         if (_av1an is null || _svtEncApp is null)
             throw new InvalidOperationException(
                 "O codec AV1an precisa de av1an.exe e SvtAv1EncApp.exe em tools\\ e do VapourSynth instalado na máquina.");
-        if (hybrid && _hybridSvtEncApp is null)
-            throw new InvalidOperationException(
-                "O codec Híbrido IA precisa do fork em tools\\svt-av1-hybrid\\ (SvtAv1EncApp.exe + SvtAv1Enc.dll + ai_prior.txt).");
 
         var workDir = Path.GetDirectoryName(outputPath)!;
         var tempDir = Path.Combine(workDir, $"av1an_{Path.GetFileNameWithoutExtension(outputPath)}");
@@ -566,8 +558,7 @@ public class EncodeService : Queueing.IEncodeStage
                 GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
             var args = BuildAv1anArgs(cfg, kbps, inputPath, outputPath, tempDir, logfile, internalWorkers, audioParams,
                 bestSourceChunks: _av1anBestSource);
-            await RunAv1anAsync(args, logfile, outputPath, ct, progress, duration,
-                hybrid: hybrid).ConfigureAwait(false);
+            await RunAv1anAsync(args, logfile, outputPath, ct, progress, duration).ConfigureAwait(false);
         }
         finally
         {
@@ -583,7 +574,7 @@ public class EncodeService : Queueing.IEncodeStage
     /// O relato é contínuo: a cada linha "finished chunk" e a cada tick de 1s do tail —
     /// fps/velocidade são médias desde o primeiro chunk (Av1anProgressTracker), porque o
     /// av1an não emite linha alguma durante um chunk (nem na passada 1 do 2-pass).</summary>
-    private async Task RunAv1anAsync(IReadOnlyList<string> args, string logfile, string outputFile, CancellationToken ct, IProgress<EncodeProgress>? progress, double duration, bool hybrid = false)
+    private async Task RunAv1anAsync(IReadOnlyList<string> args, string logfile, string outputFile, CancellationToken ct, IProgress<EncodeProgress>? progress, double duration)
     {
         var gate = new object();
         var lastActivityTicks = Environment.TickCount64;
@@ -657,17 +648,6 @@ public class EncodeService : Queueing.IEncodeStage
             var extra = _av1anEnvPath;
             if (_svtEncApp is not null)
                 extra = Path.GetDirectoryName(_svtEncApp) + ";" + extra;
-            // híbrido: o SvtAv1EncApp do FORK vem ANTES do stock no PATH (av1an resolve
-            // o binário pelo PATH) e o prior aprendido entra pelas variáveis SVA_AI
-            if (hybrid && _hybridSvtEncApp is not null)
-            {
-                extra = Path.GetDirectoryName(_hybridSvtEncApp) + ";" + extra;
-                if (_hybridPriorFile is not null)
-                {
-                    env["SVA_AI_MODE"] = "safe";
-                    env["SVA_AI_PRIOR"] = _hybridPriorFile;
-                }
-            }
             if (extra is not null)
                 env["PATH"] = extra + ";" + (env["PATH"] ?? "");
         });
@@ -835,14 +815,13 @@ public class EncodeService : Queueing.IEncodeStage
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         var duration = Math.Max(0.001, item.EndSeconds - item.StartSeconds);
 
-        // Motor Híbrido (códigos hybrid_*): fork do SVT-AV1 com poda de candidatos por
-        // prior aprendido, orquestrado pelo av1an com o PATH apontando para o binário do
-        // fork (tools\svt-av1-hybrid\). Escolha explícita de codec — vem antes de tudo.
+        // Códigos hybrid_* foram removidos na 0.59 (motor sem diferencial prático; o
+        // experimento segue documentado no lab\). Um job antigo no banco com esse codec
+        // precisa falhar com instrução clara — NUNCA cair silenciosamente em outro motor.
         if (cfg.Code.StartsWith("hybrid", StringComparison.Ordinal))
-        {
-            await EncodeWithAv1anAsync(sourcePath, item, outputPath, passLogBase, cfg, kbps, duration, ct, progress, hybrid: true).ConfigureAwait(false);
-            return;
-        }
+            throw new InvalidOperationException(
+                "O codec 'AV1 Híbrido IA' foi removido nesta versão. Use o 'AV1an 10bits' — mesmo " +
+                "encoder de referência, sem o experimento (ver lab\\plano-remocao-hibrido.md).");
 
         // Motor Av1an (códigos av1an_*): fatiamento por cena + chunks paralelos com o
         // SvtAv1EncApp. Tem que vir ANTES do HandBrake — é escolha explícita do codec.

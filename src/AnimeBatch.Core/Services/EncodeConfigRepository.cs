@@ -77,7 +77,6 @@ public record CodecEncodeConfig
     [
         "svt_av1", "svt_av1_10bit", "nvenc_av1", "nvenc_av1_10bit",
         "av1an_av1", "av1an_av1_10bit",
-        "hybrid_av1", "hybrid_av1_10bit",
     ];
 }
 
