@@ -1,0 +1,106 @@
+﻿{
+    "label":  "baseline-v1",
+    "clipset":  "animebatch-lab-v1",
+    "clipsetHash":  "05f51f7dc4406c2b502bcc6f8a9737a2b148350b973232d647aef9e07b0b2ea9",
+    "env":  {
+                "cpu":  "13th Gen Intel(R) Core(TM) i9-13900K",
+                "cores":  "24C/32T",
+                "gpus":  "NVIDIA GeForce RTX 5060 Ti; NVIDIA GeForce RTX 4060 Ti",
+                "svt":  "SVT-AV1 v4.2.0 (release)",
+                "ffmpeg":  "ffmpeg version N-126549-ga51bb69b09-20260914 Copyright (c) 2000-2026 the FFmpeg developers",
+                "os":  "Microsoft Windows NT 10.0.26200.0",
+                "recordedAt":  "2026-09-25T23:06:12.2633032-03:00"
+            },
+    "results":  [
+                    {
+                        "clip":  "clip01",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip01",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 000001ef771f0040] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip02",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip02",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 000001f658126940] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip03",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip03",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 000001af710aae40] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip04",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip04",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 0000029a6763ec00] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip05",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip05",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 000002556f4dd040] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip06",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip06",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 00000207ffa9e480] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip07",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip07",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 000002888cf6ab00] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip08",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip08",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 0000028c8b750180] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    },
+                    {
+                        "clip":  "clip09",
+                        "engine":  "svt_p6_500k_2pass",
+                        "error":  "Svt[info]: -------------------------------------------"
+                    },
+                    {
+                        "clip":  "clip09",
+                        "engine":  "nvenc_p7_500k",
+                        "error":  "[av1_nvenc @ 00000248a2c6ebc0] Driver does not support the required nvenc API version. Required: 13.1 Found: 13.0"
+                    }
+                ]
+}

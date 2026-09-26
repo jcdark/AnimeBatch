@@ -1,0 +1,160 @@
+﻿{
+    "label":  "baseline-v1",
+    "clipset":  "animebatch-lab-v1",
+    "clipsetHash":  "05f51f7dc4406c2b502bcc6f8a9737a2b148350b973232d647aef9e07b0b2ea9",
+    "env":  {
+                "cpu":  "13th Gen Intel(R) Core(TM) i9-13900K",
+                "cores":  "24C/32T",
+                "gpus":  "NVIDIA GeForce RTX 5060 Ti; NVIDIA GeForce RTX 4060 Ti",
+                "svt":  "SVT-AV1 v4.2.0 (release)",
+                "ffmpeg":  "ffmpeg version N-126549-ga51bb69b09-20260914 Copyright (c) 2000-2026 the FFmpeg developers",
+                "os":  "Microsoft Windows NT 10.0.26200.0",
+                "recordedAt":  "2026-09-25T23:19:39.0501264-03:00"
+            },
+    "results":  [
+                    {
+                        "clip":  "clip01",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  11.04,
+                        "fpsEfetivo":  97.64,
+                        "kbps":  492.7,
+                        "sizeBytes":  2769160,
+                        "vmaf":  95.788,
+                        "ssim":  0.99698,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip01",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip02",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  12.13,
+                        "fpsEfetivo":  88.87,
+                        "kbps":  497.4,
+                        "sizeBytes":  2795688,
+                        "vmaf":  92.473,
+                        "ssim":  0.99368,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip02",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip03",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  11.88,
+                        "fpsEfetivo":  90.82,
+                        "kbps":  503.5,
+                        "sizeBytes":  2832391,
+                        "vmaf":  87.242,
+                        "ssim":  0.98591,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip03",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip04",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  13.38,
+                        "fpsEfetivo":  80.57,
+                        "kbps":  447.7,
+                        "sizeBytes":  2516271,
+                        "vmaf":  65.344,
+                        "ssim":  0.93253,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip04",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip05",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  9.24,
+                        "fpsEfetivo":  116.77,
+                        "kbps":  497.1,
+                        "sizeBytes":  2796238,
+                        "vmaf":  91.428,
+                        "ssim":  0.99367,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip05",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip06",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  4.79,
+                        "fpsEfetivo":  223.8,
+                        "kbps":  500.8,
+                        "sizeBytes":  2817457,
+                        "vmaf":  94.924,
+                        "ssim":  0.99469,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip06",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip07",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  12.36,
+                        "fpsEfetivo":  87.22,
+                        "kbps":  496.1,
+                        "sizeBytes":  2787961,
+                        "vmaf":  89.208,
+                        "ssim":  0.99006,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip07",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip08",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  2.55,
+                        "fpsEfetivo":  422.75,
+                        "kbps":  287,
+                        "sizeBytes":  1612741,
+                        "vmaf":  96.986,
+                        "ssim":  0.99867,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip08",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    },
+                    {
+                        "clip":  "clip09",
+                        "engine":  "svt_p6_500k_2pass",
+                        "wallSeconds":  12.29,
+                        "fpsEfetivo":  87.71,
+                        "kbps":  500.2,
+                        "sizeBytes":  2811482,
+                        "vmaf":  94.638,
+                        "ssim":  0.99748,
+                        "psnr":  0
+                    },
+                    {
+                        "clip":  "clip09",
+                        "engine":  "nvenc_p7_500k",
+                        "skipped":  "driver NVIDIA \u003c 610 / API 13.1 (atualizar driver destrava)"
+                    }
+                ]
+}

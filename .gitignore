@@ -26,3 +26,8 @@ out/
 
 # Resultados de teste
 TestResults/
+
+# Laboratório AV1 híbrido — clipes/fontes e artefatos grandes fora do git
+lab/clips/
+lab/tmp/
+lab/clips.local.json

@@ -1,0 +1,98 @@
+﻿{
+    "clipset":  "animebatch-lab-v1",
+    "seed":  42,
+    "sourceRootHint":  "originais dublados (espelho local; caminhos em clips.local.json, nao versionado)",
+    "generatedAt":  "2026-09-25T22:48:34.6310782-03:00",
+    "clips":  [
+                  {
+                      "id":  "clip01",
+                      "file":  "clips/clip01.mkv",
+                      "class":  "filme",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "fb5698ea579d7cc1ad5e84676492e5cc17b5f5abfae387861e846a2ed33a13f4"
+                  },
+                  {
+                      "id":  "clip02",
+                      "file":  "clips/clip02.mkv",
+                      "class":  "serie",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "e65f262f7482497ce590373413c198bea38fd74a7fb94186660915fd082bfd95"
+                  },
+                  {
+                      "id":  "clip03",
+                      "file":  "clips/clip03.mkv",
+                      "class":  "serie",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1079,
+                      "sha256":  "48a210b0e6b795b52a6c9778e77e0dc3f82110ff41afd28906a71862af02a7fa"
+                  },
+                  {
+                      "id":  "clip04",
+                      "file":  "clips/clip04.mkv",
+                      "class":  "serie",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "846d8efb72654a867befa6822a867df7000a461213bca04451f5e334140a86c4"
+                  },
+                  {
+                      "id":  "clip05",
+                      "file":  "clips/clip05.mkv",
+                      "class":  "serie",
+                      "width":  1416,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1079,
+                      "sha256":  "90a688151efb512d79e63ffaad327ed310613b1d4457a0e6346134df15bab1c0"
+                  },
+                  {
+                      "id":  "clip06",
+                      "file":  "clips/clip06.mkv",
+                      "class":  "serie",
+                      "width":  750,
+                      "height":  574,
+                      "fps":  "24000/1001",
+                      "frames":  1072,
+                      "sha256":  "bec64daec0735e39583fae26d86b74557859325fe81a06a855d04a75ebf56c69"
+                  },
+                  {
+                      "id":  "clip07",
+                      "file":  "clips/clip07.mkv",
+                      "class":  "serie",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "b6161d50cc118c82781d3b3dac2481a57ff65a37e9a93eb07632013439a9e4f0"
+                  },
+                  {
+                      "id":  "clip08",
+                      "file":  "clips/clip08.mkv",
+                      "class":  "serie",
+                      "width":  640,
+                      "height":  480,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "4c7e896136419dfa37d7c7cd763181d42186fd0f188a42237a5b622c508e068d"
+                  },
+                  {
+                      "id":  "clip09",
+                      "file":  "clips/clip09.mkv",
+                      "class":  "serie",
+                      "width":  1920,
+                      "height":  1080,
+                      "fps":  "24000/1001",
+                      "frames":  1078,
+                      "sha256":  "b9fcc4e0f4d025c7261fa7d29057377a0cdb4056a1257cbeba207db27f962c04"
+                  }
+              ]
+}

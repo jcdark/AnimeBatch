@@ -1,0 +1,61 @@
+﻿{
+    "label":  "dbg",
+    "clipset":  "animebatch-lab-v1",
+    "clipsetHash":  "05f51f7dc4406c2b502bcc6f8a9737a2b148350b973232d647aef9e07b0b2ea9",
+    "env":  {
+                "cpu":  "13th Gen Intel(R) Core(TM) i9-13900K",
+                "cores":  "24C/32T",
+                "gpus":  "NVIDIA GeForce RTX 5060 Ti; NVIDIA GeForce RTX 4060 Ti",
+                "svt":  "SVT-AV1 v4.2.0 (release)",
+                "ffmpeg":  "ffmpeg version N-126549-ga51bb69b09-20260914 Copyright (c) 2000-2026 the FFmpeg developers",
+                "os":  "Microsoft Windows NT 10.0.26200.0",
+                "recordedAt":  "2026-09-25T23:00:17.2387697-03:00"
+            },
+    "results":  [
+                    {
+                        "clip":  "clip01",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip02",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip03",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip04",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip05",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip06",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip07",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip08",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    },
+                    {
+                        "clip":  "clip09",
+                        "engine":  "svt_p6_500k_2pass nvenc_p7_500k",
+                        "error":  "Engine desconhecida: svt_p6_500k_2pass nvenc_p7_500k"
+                    }
+                ]
+}
