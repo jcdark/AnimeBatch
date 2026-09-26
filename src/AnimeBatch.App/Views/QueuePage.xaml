@@ -31,8 +31,12 @@
                       Unchecked="ChkAutoRemove_Changed" />
             <CheckBox x:Name="ChkQualityCheck" VerticalAlignment="Center" Checked="ChkQualityCheck_Changed"
                       Unchecked="ChkQualityCheck_Changed" />
-            <ComboBox x:Name="CmbWhenDone" MinWidth="190" VerticalAlignment="Center"
-                      SelectionChanged="CmbWhenDone_SelectionChanged" />
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <!-- label AO LADO do combo (Header do ComboBox renderizaria em cima) -->
+                <TextBlock x:Name="WhenDoneLabel" VerticalAlignment="Center" />
+                <ComboBox x:Name="CmbWhenDone" MinWidth="190" VerticalAlignment="Center"
+                          SelectionChanged="CmbWhenDone_SelectionChanged" />
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="3">

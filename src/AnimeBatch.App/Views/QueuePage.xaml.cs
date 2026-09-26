@@ -224,7 +224,7 @@ public sealed partial class QueuePage : Page
         BtnClear.Content = t.T("queue.clear");
         ChkAutoRemove.Content = t.T("queue.autoRemove");
         ChkQualityCheck.Content = t.T("queue.qualityCheck");
-        CmbWhenDone.Header = t.T("queue.whenDone");
+        WhenDoneLabel.Text = t.T("queue.whenDone");
         if (CmbWhenDone.ItemsSource is List<string> whenDoneItems && whenDoneItems.Count == WhenDoneOptions.Length)
         {
             // relocaliza mantendo a seleção (troca de idioma reconstroi os rótulos)
