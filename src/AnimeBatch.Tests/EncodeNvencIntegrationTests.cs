@@ -22,8 +22,9 @@ public class EncodeNvencIntegrationTests
         {
             var src = Path.Combine(work, "src.mkv");
             IntegrationHelpers.RunFfmpeg(
-                $"-f lavfi -i testsrc2=size=640x360:rate=30:duration=1 -f lavfi -i sine=frequency=440:duration=1 " +
-                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -y \"{src}\"");
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=1",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
             var outPath = Path.Combine(work, "parte_01 - teste.mkv");
             var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath!);

@@ -22,8 +22,9 @@ public class EncodeSvtIntegrationTests
         {
             var src = Path.Combine(work, "src.mkv");
             IntegrationHelpers.RunFfmpeg(
-                $"-f lavfi -i testsrc2=size=640x360:rate=30:duration=2 -f lavfi -i sine=frequency=440:duration=2 " +
-                $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest -y \"{src}\"");
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
             var outPath = Path.Combine(work, "parte_01 - teste.mkv");
             var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath!, handBrakeCliPath: IntegrationHelpers.Tools.HandBrakeCliPath);
@@ -64,7 +65,8 @@ public class EncodeSvtIntegrationTests
         {
             var src = Path.Combine(work, "src.mkv");
             IntegrationHelpers.RunFfmpeg(
-                $"-f lavfi -i testsrc2=size=640x360:rate=30:duration=2 -c:v libx264 -pix_fmt yuv420p -y \"{src}\"");
+                "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", src);
 
             var outPath = Path.Combine(work, "02 - Intro - teste.mkv");
             var encode = new EncodeService(IntegrationHelpers.Tools.FfmpegPath!, handBrakeCliPath: IntegrationHelpers.Tools.HandBrakeCliPath);

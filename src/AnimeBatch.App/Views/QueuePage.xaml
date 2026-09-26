@@ -24,6 +24,8 @@
             <Button x:Name="BtnClear" Click="BtnClear_Click" />
             <CheckBox x:Name="ChkAutoRemove" VerticalAlignment="Center" Checked="ChkAutoRemove_Changed"
                       Unchecked="ChkAutoRemove_Changed" />
+            <CheckBox x:Name="ChkQualityCheck" VerticalAlignment="Center" Checked="ChkQualityCheck_Changed"
+                      Unchecked="ChkQualityCheck_Changed" />
             <ComboBox x:Name="CmbWhenDone" MinWidth="190" VerticalAlignment="Center"
                       SelectionChanged="CmbWhenDone_SelectionChanged" />
         </StackPanel>
@@ -52,6 +54,8 @@
                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                            Visibility="{x:Bind ErrorVisibility, Mode=OneWay}"
                                            TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind QualityLabel, Mode=OneWay}" FontSize="11" Foreground="Gray"
+                                           Visibility="{x:Bind QualityVisibility, Mode=OneWay}" />
                             </StackPanel>
                             <TextBlock Grid.Column="2" Text="{x:Bind StateLabel, Mode=OneWay}" VerticalAlignment="Center" />
                             <TextBlock Grid.Column="3" Text="{x:Bind ItemsSummary, Mode=OneWay}" VerticalAlignment="Center" />

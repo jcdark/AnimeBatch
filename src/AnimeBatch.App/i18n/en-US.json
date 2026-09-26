@@ -46,6 +46,7 @@
         "queue.stop": "■ Stop",
         "queue.clear": "Clear queue",
         "queue.autoRemove": "Remove items once converted",
+        "queue.qualityCheck": "Quality check (VMAF)",
         "queue.whenDone": "When done:",
         "queue.whenDone.none": "Do nothing",
         "queue.whenDone.shutdown": "Shut down the computer",

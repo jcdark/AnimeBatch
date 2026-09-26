@@ -46,6 +46,7 @@
         "queue.stop": "■ Parar",
         "queue.clear": "Limpar fila",
         "queue.autoRemove": "Remover itens ao serem convertidos",
+        "queue.qualityCheck": "Verificar qualidade (VMAF)",
         "queue.whenDone": "Quando terminar:",
         "queue.whenDone.none": "Não fazer nada",
         "queue.whenDone.shutdown": "Desligar o computador",

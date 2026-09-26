@@ -40,4 +40,15 @@ public class JobItem
     /// bitrate próprio) mas NÃO vira capítulo no arquivo final — o merge o trata como
     /// Critical (conteúdo entra, entrada de capítulo não), como se não existisse no fim.</summary>
     public bool IsTemporary { get; set; }
+
+    /// <summary>QC de qualidade opcional (libvmaf fonte×parte, rodada após o encode quando a
+    /// setting queue.qualityCheck está ligada). Null = não medida. A referência é o trecho da
+    /// ORIGEM (com upscale, é o intermediário ampliado — isola a qualidade do ENCODE).</summary>
+    public double? QualityVmaf { get; set; }
+
+    /// <summary>SSIM float da QC (null = não medida).</summary>
+    public double? QualitySsim { get; set; }
+
+    /// <summary>PSNR (plano Y quando disponível) da QC (null = não medida).</summary>
+    public double? QualityPsnr { get; set; }
 }

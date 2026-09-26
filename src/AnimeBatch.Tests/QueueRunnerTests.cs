@@ -67,7 +67,7 @@ public class QueueRunnerTests : IDisposable
     }
 
     private QueueRunner NewRunner(
-        FakeEncode encode, FakeMerge? merge = null)
+        FakeEncode encode, FakeMerge? merge = null, Func<IQualityCheckStage>? quality = null)
     {
         return new QueueRunner(new QueueRunnerDeps
         {
@@ -81,6 +81,7 @@ public class QueueRunnerTests : IDisposable
             Encode = _ => encode,
             Merge = () => merge ?? new FakeMerge(),
             Upscale = () => new FakeUpscale(),
+            Quality = quality,
             OutputDirectory = () => _outDir,
         });
     }
@@ -594,6 +595,78 @@ public class QueueRunnerTests : IDisposable
     }
 
     // ---- Fakes ----
+
+    /// <summary>QC fake: grava os pedidos recebidos e devolve resultado fixo (ou lança, p/ falha).</summary>
+    private sealed class FakeQualityCheck : IQualityCheckStage
+    {
+        public List<QualityCheckRequest> Requests = [];
+        public QualityResult? Result { get; set; } = new(95.5, 0.995, 41.2);
+        public Exception? Throw { get; set; }
+
+        public async Task<QualityResult?> MeasureAsync(QualityCheckRequest req, CancellationToken ct)
+        {
+            await Task.Yield();
+            if (Throw is not null)
+                throw Throw;
+            Requests.Add(req);
+            return Result;
+        }
+    }
+
+    [Fact]
+    public async Task QC_ligada_medida_e_gravada_no_item()
+    {
+        var job = NewJob("ep_qc_on.mkv");
+        await _jobs.AddAsync(job);
+        await _settings.SetAsync(SettingsRepository.QueueQualityCheck, "true");
+
+        var qc = new FakeQualityCheck();
+        var runner = NewRunner(new FakeEncode(), quality: () => qc);
+        await runner.RunAsync();
+
+        var item = (await _jobs.GetAllOrderedAsync()).Single().Items.Single();
+        Assert.Equal(95.5, item.QualityVmaf);
+        Assert.Equal(0.995, item.QualitySsim);
+        Assert.Equal(41.2, item.QualityPsnr);
+        // Referência = trecho da ORIGEM (start/duração da parte); distorcida = parte encodeada
+        var req = Assert.Single(qc.Requests);
+        Assert.Equal(job.SourcePath, req.RefPath);
+        Assert.Equal(0, req.RefStartSeconds);
+        Assert.Equal(60, req.RefDurationSeconds);
+        Assert.EndsWith(".mkv", req.DistPath);
+    }
+
+    [Fact]
+    public async Task QC_desligada_por_padrao_nao_medida()
+    {
+        var job = NewJob("ep_qc_off.mkv");
+        await _jobs.AddAsync(job);
+
+        var qc = new FakeQualityCheck();
+        var runner = NewRunner(new FakeEncode(), quality: () => qc);
+        await runner.RunAsync();
+
+        Assert.Empty(qc.Requests); // setting ausente = desligada
+        var item = (await _jobs.GetAllOrderedAsync()).Single().Items.Single();
+        Assert.Null(item.QualityVmaf);
+    }
+
+    [Fact]
+    public async Task QC_falha_nao_derruba_o_job()
+    {
+        var job = NewJob("ep_qc_fail.mkv");
+        await _jobs.AddAsync(job);
+        await _settings.SetAsync(SettingsRepository.QueueQualityCheck, "true");
+
+        var qc = new FakeQualityCheck { Throw = new InvalidOperationException("vmaf explodiu") };
+        var runner = NewRunner(new FakeEncode(), quality: () => qc);
+        await runner.RunAsync();
+
+        var done = (await _jobs.GetAllOrderedAsync()).Single();
+        Assert.Equal(JobState.Done, done.State);           // QC é best-effort
+        Assert.Equal(JobItemState.Done, done.Items[0].State);
+        Assert.Null(done.Items[0].QualityVmaf);
+    }
 
     private sealed class FakeProbe : IProbeStage
     {

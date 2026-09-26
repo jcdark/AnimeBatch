@@ -90,7 +90,7 @@ public sealed partial class SettingsPage : Page
 
     private async Task LoadPreferencesAsync()
     {
-        var key = await AppServices.Settings.GetAsync(SettingsRepository.TmdbApiKey);
+        var key = await AppServices.Settings.GetAsync(SettingsRepository.TmdbKeySetting);
         TmdbKeyBox.Password = key ?? "";
         TmdbKeyStatus.Text = string.IsNullOrEmpty(key)
             ? AppServices.Localizer.T("settings.tmdbKeyStatusNone")
@@ -219,7 +219,7 @@ public sealed partial class SettingsPage : Page
     {
         var t = AppServices.Localizer;
         var key = TmdbKeyBox.Password.Trim();
-        await AppServices.Settings.SetAsync(AnimeBatch.Core.Services.SettingsRepository.TmdbApiKey, key);
+        await AppServices.Settings.SetAsync(AnimeBatch.Core.Services.SettingsRepository.TmdbKeySetting, key);
         TmdbKeyStatus.Text = string.IsNullOrEmpty(key)
             ? t.T("settings.tmdbKeyRemoved")
             : t.T("settings.tmdbKeySaved");
