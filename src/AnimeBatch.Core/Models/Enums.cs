@@ -74,5 +74,9 @@ public static class VideoCodecOptions
         ("AV1 10bits NVENC", "nvenc_av1_10bit"),
         ("AV1an", "av1an_av1"),
         ("AV1an 10bits", "av1an_av1_10bit"),
+        // Projeto AV1 híbrido (branch feature/av1-hybrid): fork do SVT-AV1 com poda de
+        // candidatos por prior aprendido (SVA_AI). Experimental; exige tools\svt-av1-hybrid\.
+        ("AV1 Híbrido IA (experimental)", "hybrid_av1"),
+        ("AV1 Híbrido IA 10bits (experimental)", "hybrid_av1_10bit"),
     ];
 }

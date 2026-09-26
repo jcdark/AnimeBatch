@@ -52,6 +52,12 @@ if ($optional.Count -gt 0) {
     Write-Warning ("Upscale/ONNX ausente no pacote (upscaling nao funcionara): " + ($optional -join ", "))
 }
 
+# Fork hibrido (experimental): ausencia NAO bloqueia - os codigos hybrid_* so dao erro
+# claro ao encodear se a pasta nao estiver populada (exe + dll + ai_prior.txt)
+if (-not (Test-Path (Join-Path $out "tools\svt-av1-hybrid\SvtAv1EncApp.exe"))) {
+    Write-Warning "tools\svt-av1-hybrid ausente - os codecs 'AV1 Hibrido IA (experimental)' nao funcionarao (opcional)"
+}
+
 if (-not (Test-Path (Join-Path $out "i18n\pt-BR.json"))) {
     throw "i18n\pt-BR.json ausente no pacote - o publish ficou sem o conteudo da UI"
 }

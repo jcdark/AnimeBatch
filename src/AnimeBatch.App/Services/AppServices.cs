@@ -202,7 +202,11 @@ internal static class AppServices
             // 18/09/2026 igualou o script original; sem o exe, o EncodeService cai no ffmpeg
             Encode = stall => new EncodeService(Tools.FfmpegPath!, stall, Tools.HandBrakeCliPath,
                 Tools.Av1anPath, Tools.SvtAv1EncAppPath, Av1anEnvPath(), Tools.FfprobePath,
-                av1anBestSource: Av1anHasBestSource),
+                av1anBestSource: Av1anHasBestSource,
+                // Projeto AV1 híbrido (experimental): fork do SVT-AV1 com poda por prior
+                // aprendido — só fica disponível com tools\svt-av1-hybrid\ populado
+                hybridSvtEncAppPath: Tools.SvtHybridEncAppPath,
+                hybridPriorFile: Tools.HybridPriorFile),
             Merge = () => new MergeService(Tools.MkvMergePath!),
             Upscale = () => new UpscaleService(Tools.FfmpegPath!),
             // QC de qualidade opcional (VMAF) — só existe com ffmpeg+ffprobe presentes
