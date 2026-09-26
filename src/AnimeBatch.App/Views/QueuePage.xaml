@@ -8,6 +8,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -22,6 +23,10 @@
             <Button x:Name="BtnTop" Click="BtnTop_Click" />
             <Button x:Name="BtnRemove" Click="BtnRemove_Click" />
             <Button x:Name="BtnClear" Click="BtnClear_Click" />
+        </StackPanel>
+
+        <!-- Opções da fila em linha própria: cabem sem vazar da janela -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="16">
             <CheckBox x:Name="ChkAutoRemove" VerticalAlignment="Center" Checked="ChkAutoRemove_Changed"
                       Unchecked="ChkAutoRemove_Changed" />
             <CheckBox x:Name="ChkQualityCheck" VerticalAlignment="Center" Checked="ChkQualityCheck_Changed"
@@ -30,7 +35,7 @@
                       SelectionChanged="CmbWhenDone_SelectionChanged" />
         </StackPanel>
 
-        <StackPanel Grid.Row="2">
+        <StackPanel Grid.Row="3">
             <InfoBar x:Name="Info" IsOpen="False" IsClosable="True" Severity="Informational" />
             <ListView x:Name="JobsList" SelectionMode="Single" Margin="0,8,0,0">
                 <ListView.ItemTemplate>
