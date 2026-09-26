@@ -96,3 +96,12 @@ powershell -ExecutionPolicy Bypass -File lab\tools\run-baseline.ps1 -Label svt-f
   reprovada. Único caminho GPU viável para o ME: acumular descritores de busca do frame e
   disparar 1 kernel por frame (mudança de fluxo no ME do fork). Sem isso, a GPU segue nos
   papéis que já tem (ONNX/DirectML no upscale, NVDEC no QC).
+
+## Fase 5b — Etapa 0/1 concluídas (26/09/2026)
+
+- Teto medido (`SVA_ME_STATS=1` no fork): ME = **24,2% do encode** (13,9M chamadas/3min,
+  3,25 ms/frame) → GO.
+- Mix real (`SVA_ME_STATS=2`): ~1605 jobs/frame/passada, blocos pequenos com buscas variadas.
+- Protótipo de lote (`cuda-lab batch`): paridade **exata 1605/1605**, lote completo em
+  **0,8 ms/frame vs 3,25 ms/frame do CPU** → gate ≥3× PASSA (4,1×). Resultados em
+  `resultados\fase5b-etapa0-1.md`. Próximo: Etapa 2 (HME por níveis no fork), se o dono aprovar.
