@@ -53,3 +53,39 @@ com N chunks do av1an (projeção: tranquilo, dezenas de MB por processo).
 - k=1 apenas no lab (o kernel do fork já suporta k=2; o gate real é no encoder).
 - Probes de diagnóstico deixados de fora na versão commitada; a investigação do
   "0xC0000142" virou um bug real de heap (escalonamento dos jobs) — corrigido em 1490d1e.
+
+---
+
+# Fase 5b — Etapa 2 (HME por lotes no fork) — RESULTADO FINAL (26/09)
+
+Implementada por agente especialista em 3 incrementos + 1 ciclo de otimização:
+
+| Marco | Commit | Gate paridade | Benchmark (clip01, p6 2-pass) |
+|---|---|---|---|
+| Inc 2 — executor + lote L1 por segmento | 56b54709b + 44099102f | VERDE 4/4 (1ª arquitetura de fases validada) | 87,8s vs 80,5s CPU (−9%) |
+| Inc 3 — L0 em duas fases (L0a/L0b) | 937602a1e | VERDE 4/4 (1ª tentativa) | 91,0s (−13%) |
+| Inc 3b — row-memcpy + snapshot flat (1 memcpy span) | 002de2b92 + ffc9832ed (revert L0) | VERDE 4/4 (estado final) | GPU −11,5% em lp1; **−89% em threading de produção** (25 threads × mutex) |
+
+## Diagnóstico final (o valor do experimento)
+
+- A maquinaria de fases foi levada a custo ~zero (braço fallback-CPU do lote: 89,7s →
+  79,9s ≈ per-call). O gargalo remanescente é 100% o modelo de dados: **upload por job**
+  (as SAs do L0 são enormes — milhares de jobs × 7–15 KB) + launches serializados entre
+  segmentos. Com 1 ref, o L0b nem gera jobs e o L0a são só ~2040 jobs/picture.
+- Bug real de paridade encontrado e corrigido no caminho (snapshot uint16 vs uint32 —
+  vazamento de estado entre b64s), além de um zz_sad sujo detectado pelo próprio gate
+  (falso-rápido, corrigido).
+- Ferramenta permanente: `SVA_BATCH_DBG=1/2` (hash FNV por b64 do estado L1/ready/final).
+
+## Veredito (critério do plano: ≥10% de ganho ou encerrar)
+
+**Fase 5b ENCERRADA sem ganho**: o lote GPU não atinge o critério com o modelo
+"upload por job"; a única alavanca restante é o redesenho "refs residentes em device +
+overlap async" — ciclo novo, custo de semanas, retorno incerto.
+
+## Estado final (produção intacta)
+
+- Fork em `002de2b92`: lote L1-only sob `SVA_CUDA=1 + SVA_CUDA_BATCH=1` (env OFF por
+  padrão; byte-exato; fallback CPU; **NÃO usar o env em produção** — contenção de mutex
+  com 25 threads). Sem as envs, o encoder é byte-idêntico ao CPU puro (gate 4/4).
+- L0 loteado está no histórico (937602a1e) para retomada futura com refs residentes.
