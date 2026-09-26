@@ -97,12 +97,15 @@ public sealed partial class MainWindow : Window
         if (!string.IsNullOrEmpty(s.Rate))
             parts.Add(t.T("footer.rate", s.Rate));
 
-        // Motor Av1an: contador de chunks (não existe "passo 1/2" — as passadas rodam
-        // dentro de cada chunk) ou a fase do pipeline antes do primeiro chunk
+        // Motor Av1an: fase do pipeline ANTES do primeiro chunk + contador de chunks.
+        // A análise de cenas é single-core e silenciosa por MINUTOS — e o "Queue N Workers"
+        // sai do log logo no boot, então sem o rótulo da fase o "chunk 0/153" com FPS 0.0
+        // parecia encode travado (o dono leu como "1º passe sem informação"). Não existe
+        // "passo 1/2" nesse motor: as passadas rodam DENTRO de cada chunk.
+        if (s.Phase is "scenes" or "preparing" or "segmenting")
+            parts.Add(t.T($"footer.phase.{s.Phase}"));
         if (s.ChunksTotal > 0)
             parts.Add(t.T("footer.chunks", s.ChunksDone, s.ChunksTotal));
-        else if (s.Phase is "scenes" or "preparing" or "segmenting")
-            parts.Add(t.T($"footer.phase.{s.Phase}"));
 
         parts.AddRange(
         [
