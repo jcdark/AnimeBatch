@@ -5,7 +5,7 @@ obj/
 *.user
 
 # Binários externos embutidos (populados por scripts/copiá-los manualmente; não versionar ~500MB)
-tools/
+/tools/
 data/*.db*
 logs/
 saida/
