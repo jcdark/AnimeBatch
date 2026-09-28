@@ -59,7 +59,7 @@ public sealed partial class EpisodesPage : Page
         CmbModelOnnx.Content = t.T("episodes.modelOnnx");
         CmbVideoCodec.Header = t.T("episodes.codec");
         CmbVideoCodec.ItemsSource = VideoCodecOptions.Options.Select(o => o.Label).ToList();
-        CmbVideoCodec.SelectedIndex = 3; // AV1 10bits NVENC (padrão pra quem tem GPU)
+        CmbVideoCodec.SelectedIndex = 1; // AV1 10bits SVT (qualidade de referência; NVENC fica a escolha manual)
         UpdateSizeEstimateLabels(0);
     }
 
@@ -322,10 +322,42 @@ public sealed partial class EpisodesPage : Page
         }
     }
 
-    private void BtnResetChapters_Click(object sender, RoutedEventArgs e)
+    private async void BtnResetChapters_Click(object sender, RoutedEventArgs e)
     {
         if (_selected is not { } ep)
             return;
+
+        // partes no disco que deixam de corresponder a capítulos após o reset → apagar.
+        // Computado ANTES de mexer em qualquer coisa (a grade pós-reset vem da sonda)
+        var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
+        var workDir = JobPaths.WorkDirectory(AppServices.GetOutputDirectory(), baseName);
+        var orphans = new List<string>();
+        if (ep.Probed is { } infoPre)
+        {
+            var current = Chapters().Select(c =>
+                JobPaths.PartFileName(c.Number, c.Title, baseName)).ToHashSet(StringComparer.Ordinal);
+            var after = AppServices.Chapters.BuildRanges(infoPre.Chapters, infoPre.DurationSeconds)
+                .Select(r => JobPaths.PartFileName(r.Number, r.Title, baseName));
+            orphans = [.. current.Except(after)
+                .Select(f => Path.Combine(workDir, f))
+                .Where(File.Exists)];
+        }
+
+        if (orphans.Count > 0)
+        {
+            var t = AppServices.Localizer;
+            var dialog = new ContentDialog
+            {
+                Title = t.T("episodes.resetChapters"),
+                Content = t.T("episodes.resetWithFilesMsg", orphans.Count),
+                PrimaryButtonText = t.T("episodes.partRemoveYes"),
+                CloseButtonText = t.T("episodes.addDialog.cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = this.XamlRoot,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return;
+        }
 
         try
         {
@@ -353,6 +385,20 @@ public sealed partial class EpisodesPage : Page
             foreach (var r in ranges)
                 ep.Chapters.Add(CreateChapterVM(r.Number, r.Title, r.StartSeconds, r.EndSeconds, ep.Series, keywords));
             ResequenceChapters();
+
+            // os itens da grade editada que sumiram levam seus arquivos junto
+            foreach (var f in orphans)
+            {
+                try
+                {
+                    File.Delete(f);
+                    PartProbeCache.TryRemove(f.ToUpperInvariant(), out _);
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus(InfoBarSeverity.Error, f, ex.Message);
+                }
+            }
             await UpdateSizeEstimateAsync();
         }, ex => ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message));
     }
@@ -479,17 +525,54 @@ public sealed partial class EpisodesPage : Page
 
     // ---------- edição de capítulos ----------
 
-    private void RemoveChapter_Click(object sender, RoutedEventArgs e)
+    private async void RemoveChapter_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: ChapterItemViewModel item } &&
-            ChaptersList.ItemsSource is ObservableCollection<ChapterItemViewModel> col)
+        if (sender is not FrameworkElement { Tag: ChapterItemViewModel item } ||
+            ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel> col ||
+            _selected is null)
+            return;
+
+        // capítulo com parte já encodeada no disco → excluir o arquivo junto (com
+        // confirmação); os capítulos seguintes descem 1 número e suas partes renomeiam
+        var baseName = Path.GetFileNameWithoutExtension(_selected.FullPath);
+        var path = JobPaths.PartPath(AppServices.GetOutputDirectory(), baseName, item.Number, item.Title);
+        var hadFile = File.Exists(path);
+        if (hadFile)
         {
-            col.Remove(item);
-            // a remoção também persiste: sem isso o capítulo removido ressuscitaria
-            // ao reabrir o episódio (a grade salva vence os capítulos do vídeo)
-            RecomputeChapterEnds(_selected);
-            SaveChapterEdits(_selected);
+            var t = AppServices.Localizer;
+            var dialog = new ContentDialog
+            {
+                Title = t.T("episodes.chapterRemoveTitle"),
+                Content = t.T("episodes.chapterRemoveMsg", path),
+                PrimaryButtonText = t.T("episodes.partRemoveYes"),
+                CloseButtonText = t.T("episodes.addDialog.cancel"),
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = this.XamlRoot,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+                return;
         }
+
+        var before = SnapshotChapters(col);
+        col.Remove(item);
+        // a remoção também persiste: sem isso o capítulo removido ressuscitaria
+        // ao reabrir o episódio (a grade salva vence os capítulos do vídeo)
+        RecomputeChapterEnds(_selected);
+        SaveChapterEdits(_selected);
+
+        if (hadFile)
+        {
+            try
+            {
+                File.Delete(path);
+                PartProbeCache.TryRemove(path.ToUpperInvariant(), out _);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(InfoBarSeverity.Error, path, ex.Message);
+            }
+        }
+        await SyncPartFileNamesAsync(_selected, before);
     }
 
     /// <summary>Duração de referência da grade: a da sonda; sem sonda, o maior fim já conhecido
@@ -609,6 +692,59 @@ public sealed partial class EpisodesPage : Page
         }
         PartProbeCache.TryRemove(path.ToUpperInvariant(), out _);
         await EvaluatePartFilesAsync(_selected);
+    }
+
+    // ---- Renomeação das partes no disco quando a grade muda de numeração ----
+
+    /// <summary>Posição de um capítulo ANTES de uma mudança na grade: a referência do VM é
+    /// a identidade — título repetido ("Episode" ×3) não permite casar por título/número.</summary>
+    private sealed record ChapterSnapshot(ChapterItemViewModel Chapter, int Number, string Title);
+
+    private static List<ChapterSnapshot> SnapshotChapters(ObservableCollection<ChapterItemViewModel> col) =>
+        [.. col.Select(c => new ChapterSnapshot(c, c.Number, c.Title))];
+
+    /// <summary>Renomeia no disco as partes dos capítulos que mudaram de número/título
+    /// (inserir no meio renumera os seguintes; editar posição/título também move o nome).
+    /// Usa o plano de duas fases do PartRenames: sem colisão quando um destino é origem
+    /// de outro movimento. Arquivo ausente ou destino ocupado por estranho: pula.</summary>
+    private async Task SyncPartFileNamesAsync(EpisodeViewModel? ep, IReadOnlyList<ChapterSnapshot> before)
+    {
+        if (ep is null || before.Count == 0 ||
+            ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel> col)
+            return;
+
+        var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
+        var dir = JobPaths.WorkDirectory(AppServices.GetOutputDirectory(), baseName);
+        var renames = new List<(string From, string To)>();
+        foreach (var c in col)
+        {
+            var old = before.FirstOrDefault(b => ReferenceEquals(b.Chapter, c));
+            if (old is null)
+                continue; // capítulo novo — não tem arquivo de onde vir
+            var from = JobPaths.PartFileName(old.Number, old.Title, baseName);
+            var to = JobPaths.PartFileName(c.Number, c.Title, baseName);
+            if (!string.Equals(from, to, StringComparison.Ordinal))
+                renames.Add((from, to));
+        }
+
+        foreach (var (from, to) in PartRenames.Plan(renames))
+        {
+            var fromPath = Path.Combine(dir, from);
+            var toPath = Path.Combine(dir, to);
+            try
+            {
+                if (!File.Exists(fromPath) || File.Exists(toPath))
+                    continue; // destino ocupado por arquivo que não é da grade — não pisa
+                File.Move(fromPath, toPath);
+                PartProbeCache.TryRemove(fromPath.ToUpperInvariant(), out _);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus(InfoBarSeverity.Error, toPath, ex.Message);
+            }
+        }
+
+        await EvaluatePartFilesAsync(ep);
     }
 
     /// <summary>Opções de preset do modal: 0 = "usa o da configuração"; depois 1..N na faixa
@@ -737,6 +873,7 @@ public sealed partial class EpisodesPage : Page
                 Cq = cqValue,
             };
             HookChapter(updated);
+            var before = SnapshotChapters(col);
             col.Remove(item);
             var insertAt = col.Count;
             for (var i = 0; i < col.Count; i++)
@@ -750,6 +887,8 @@ public sealed partial class EpisodesPage : Page
             col.Insert(insertAt, updated);
             RecomputeChapterEnds(_selected);
             SaveChapterEdits(_selected);
+            // editar título/posição muda o NOME da parte — o arquivo acompanha
+            await SyncPartFileNamesAsync(_selected, before);
         };
 
         _ = dialog.ShowAsync();
@@ -864,6 +1003,7 @@ public sealed partial class EpisodesPage : Page
             await Task.Yield(); // deixa o dialog fechar antes de mexer na coleção
             if (ChaptersList.ItemsSource is ObservableCollection<ChapterItemViewModel> col)
             {
+                var before = SnapshotChapters(col);
                 // entra na posição cronológica — a ordem da grade é a linha do tempo
                 var insertAt = col.Count;
                 for (var i = 0; i < col.Count; i++)
@@ -878,6 +1018,9 @@ public sealed partial class EpisodesPage : Page
                 RecomputeChapterEnds(_selected);
                 // adicionar/editar capítulo cria a grade salva do episódio (chapters-edits)
                 SaveChapterEdits(_selected);
+                // inserir no meio RENUMERA os seguintes — as partes já encodeadas
+                // acompanham ("04 - Episode" vira "05 - Episode", e assim por diante)
+                await SyncPartFileNamesAsync(_selected, before);
             }
         };
 
