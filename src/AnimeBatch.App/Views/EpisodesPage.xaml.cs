@@ -835,11 +835,20 @@ public sealed partial class EpisodesPage : Page
         {
             var duration = EffectiveDuration(_selected!);
             if (!TryParseTime(start.Text, out var startSeconds) ||
-                startSeconds < 0 || startSeconds >= duration ||
-                Chapters().Any(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001))
+                startSeconds < 0 || startSeconds >= duration)
             {
                 args.Cancel = true;
-                error.Text = t.T("episodes.addDialog.invalidStart");
+                error.Text = t.T("episodes.addDialog.invalidRange", FormatTime(duration));
+                error.Visibility = Visibility.Visible;
+                return;
+            }
+            var clash = Chapters().FirstOrDefault(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001);
+            if (clash is not null)
+            {
+                args.Cancel = true;
+                // colisão real: 0:41.000 é exatamente onde o capítulo seguinte começa —
+                // para mover a divisão entre os dois, edita-se o capítulo DEPOIS da divisa
+                error.Text = t.T("episodes.addDialog.invalidDuplicate", FormatTime(startSeconds), clash.Title);
                 error.Visibility = Visibility.Visible;
                 return;
             }
@@ -973,11 +982,18 @@ public sealed partial class EpisodesPage : Page
             // SÓ tempo inicial: o final vira o início do próximo capítulo (último = fim do vídeo)
             var duration = EffectiveDuration(_selected!);
             if (!TryParseTime(start.Text, out var startSeconds) ||
-                startSeconds < 0 || startSeconds >= duration ||
-                Chapters().Any(c => Math.Abs(c.StartSeconds - startSeconds) < 0.001))
+                startSeconds < 0 || startSeconds >= duration)
             {
                 args.Cancel = true;
-                error.Text = t.T("episodes.addDialog.invalidStart");
+                error.Text = t.T("episodes.addDialog.invalidRange", FormatTime(duration));
+                error.Visibility = Visibility.Visible;
+                return;
+            }
+            var clash = Chapters().FirstOrDefault(c => Math.Abs(c.StartSeconds - startSeconds) < 0.001);
+            if (clash is not null)
+            {
+                args.Cancel = true;
+                error.Text = t.T("episodes.addDialog.invalidDuplicate", FormatTime(startSeconds), clash.Title);
                 error.Visibility = Visibility.Visible;
                 return;
             }
