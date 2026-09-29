@@ -137,6 +137,15 @@ namespace AnimeBatch.Core.Data.Migrations
                     b.Property<int?>("Preset")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double?>("QualityPsnr")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("QualitySsim")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("QualityVmaf")
+                        .HasColumnType("REAL");
+
                     b.Property<double>("StartSeconds")
                         .HasColumnType("REAL");
 

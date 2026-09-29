@@ -11,6 +11,7 @@ App Windows (WinUI 3, .NET) de conversão/upscaling/remux de anime em lote. Subs
 - Banco SQLite em `%LOCALAPPDATA%\AnimeBatch\animebatch.db` (V0.41; sobrevive a reinstalação). Na 1ª execução o `data\animebatch.db` da pasta do app (que segue no pacote como seed) é COPIADO para lá — nunca o contrário; depois disso o AppData é a fonte da verdade. Migrations EF versionadas em `src/AnimeBatch.Core/Data/Migrations` (gerar com `dotnet ef migrations add`, tool global). `chapters-edits\` ao lado do banco guarda as grades de capítulos editados por vídeo.
 - `scripts/` — release (`make-release.ps1`) e utilitários.
 - `docs/`, `tools/` — documentação e auxiliares.
+- `lab\` (branch `feature/av1-hybrid`) — laboratório de benchmark do encoder AV1 híbrido CPU/GPU+IA: `lab\tools\cut-clips.ps1` (clipset dos originais), `measure-vmaf.ps1` (libvmaf) e `run-baseline.ps1`; baseline v1 CONGELADO em `lab\baselines\` (SVT p6 2-pass @500k, 9 clipes de 45s). Todo avanço do encoder híbrido exige comparação contra esse baseline. Clipes/fontes fora do git (`lab\clips\`, `lab\clips.local.json`). Plano de fases (fork do SVT-AV1 + IA de poda de RDO, go/no-go por fase) aprovado com o dono em 25/09/2026.
 
 ## Build / teste
 
@@ -33,6 +34,8 @@ dotnet test  AnimeBatch.slnx
 
 ## Gotchas rápidos
 
+- Scripts PowerShell do repo são 100% ASCII (sem BOM o PS 5.1 lê como ANSI; byte UTF-8 vira aspa-curva no CP1252 e quebra o parse — lição do `make-icon.ps1`). Em `.ps1`, `param([string]$x)` é variável TIPADA: atribuir array COERCE para string via `$OFS` (split vai p/ variável nova). Com `$ErrorActionPreference='Stop'`, stderr redirecionado (`2> arquivo`) de processo nativo vira `NativeCommandError` na 1ª linha — guardar/restaurar EAP em volta de encodes. O `C:` de caminho absoluto quebra o parser de opções de filtro do ffmpeg — log do libvmaf por caminho RELATIVO + `WorkingDirectory`.
+- QC de qualidade (branch av1-hybrid): setting `queue.qualityCheck` (default OFF); `QualityCheckService` (libvmaf origem×parte) via `IQualityCheckStage` no `QueueRunnerDeps` (null = indisponível); best-effort — falha nunca derruba a fila; VMAF médio ponderado aparece na row do job. Migration `ItemQualityVmaf` (QualityVmaf/Ssim/Psnr em JobItems).
 - Reatribuir a MESMA `List<T>` ao ItemsSource é no-op no WinUI → usar `ObservableCollection`.
 - `CheckBox` não tem `CheckedChanged` (isso é WPF) → eventos `Checked`/`Unchecked`.
 - `x:Bind` default é `OneTime`; label dinâmico pede `Mode=OneWay`.

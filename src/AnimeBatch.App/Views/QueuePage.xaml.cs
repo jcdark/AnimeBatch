@@ -63,6 +63,24 @@ public partial class JobRowViewModel : ObservableObject
 
     public string CreatedAtLabel => Job.CreatedAt.ToString("dd/MM HH:mm");
 
+    /// <summary>VMAF médio ponderado pela duração das partes já medidas pela QC opcional
+    /// (setting queue.qualityCheck). Null = nenhuma parte medida ainda.</summary>
+    public string? QualityLabel
+    {
+        get
+        {
+            var measured = Job.Items.Where(i => i.QualityVmaf is { }).ToList();
+            if (measured.Count == 0)
+                return null;
+            var num = measured.Sum(i => i.QualityVmaf!.Value * Math.Max(0.001, i.EndSeconds - i.StartSeconds));
+            var den = measured.Sum(i => Math.Max(0.001, i.EndSeconds - i.StartSeconds));
+            return $"VMAF {num / den:0.0}";
+        }
+    }
+
+    public Visibility QualityVisibility =>
+        QualityLabel is null ? Visibility.Collapsed : Visibility.Visible;
+
     /// <summary>Atualiza a linha IN-PLACE (sem reconstruir a lista — era isso que fazia piscar).</summary>
     public void UpdateFrom(Job job, double? livePercent)
     {
@@ -76,6 +94,8 @@ public partial class JobRowViewModel : ObservableObject
         OnPropertyChanged(nameof(ItemsSummary));
         OnPropertyChanged(nameof(CodecLabel));
         OnPropertyChanged(nameof(UpscaleLabel));
+        OnPropertyChanged(nameof(QualityLabel));
+        OnPropertyChanged(nameof(QualityVisibility));
         OnPropertyChanged(nameof(CreatedAtLabel));
     }
 }
@@ -109,6 +129,7 @@ public sealed partial class QueuePage : Page
 
     private bool _autoRemoveLoaded;
     private bool _whenDoneLoaded;
+    private bool _qualityCheckLoaded;
 
     private static readonly (string Value, string LabelKey)[] WhenDoneOptions =
     [
@@ -126,6 +147,10 @@ public sealed partial class QueuePage : Page
         ChkAutoRemove.IsChecked = await AppServices.Settings
             .GetAsync(SettingsRepository.QueueAutoRemove) == "true";
         _autoRemoveLoaded = true; // evita gravar de volta a preferência durante a carga
+
+        ChkQualityCheck.IsChecked = await AppServices.Settings
+            .GetAsync(SettingsRepository.QueueQualityCheck) == "true";
+        _qualityCheckLoaded = true;
 
         var whenDone = await AppServices.Settings.GetAsync(SettingsRepository.QueueWhenDone);
         var t = AppServices.Localizer;
@@ -164,6 +189,15 @@ public sealed partial class QueuePage : Page
             ChkAutoRemove.IsChecked == true ? "true" : "false"), ShowError);
     }
 
+    private void ChkQualityCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_qualityCheckLoaded)
+            return;
+        Ui.Safe(async () => await AppServices.Settings.SetAsync(
+            SettingsRepository.QueueQualityCheck,
+            ChkQualityCheck.IsChecked == true ? "true" : "false"), ShowError);
+    }
+
     private void BtnClear_Click(object sender, RoutedEventArgs e) =>
         Ui.Safe(async () =>
         {
@@ -189,7 +223,8 @@ public sealed partial class QueuePage : Page
         BtnRemove.Content = t.T("queue.remove");
         BtnClear.Content = t.T("queue.clear");
         ChkAutoRemove.Content = t.T("queue.autoRemove");
-        CmbWhenDone.Header = t.T("queue.whenDone");
+        ChkQualityCheck.Content = t.T("queue.qualityCheck");
+        WhenDoneLabel.Text = t.T("queue.whenDone");
         if (CmbWhenDone.ItemsSource is List<string> whenDoneItems && whenDoneItems.Count == WhenDoneOptions.Length)
         {
             // relocaliza mantendo a seleção (troca de idioma reconstroi os rótulos)

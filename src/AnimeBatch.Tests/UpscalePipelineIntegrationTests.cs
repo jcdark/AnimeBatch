@@ -38,9 +38,10 @@ public class UpscalePipelineIntegrationTests : IDisposable
         IntegrationHelpers.SkipIfNoCugan();
 
         var src = Path.Combine(_workDir, "src.mp4");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=24:duration=2 " +
-                  $"-f lavfi -i sine=frequency=440:duration=2 " +
-                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
         var output = Path.Combine(_workDir, "out.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
@@ -73,9 +74,10 @@ public class UpscalePipelineIntegrationTests : IDisposable
 
         // 35s = 2 chunks (30s + 5s) → exercita o pool de workers com chunks de tamanhos diferentes
         var src = Path.Combine(_workDir, "src35.mp4");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=24:duration=35 " +
-                  $"-f lavfi -i sine=frequency=440:duration=35 " +
-                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24:duration=35",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=35",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
         var output = Path.Combine(_workDir, "out35.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
@@ -108,11 +110,13 @@ public class UpscalePipelineIntegrationTests : IDisposable
         // = 15s com taxas variáveis; áudio contínuo de 15s. Sem CFR na extração, o remontar a
         // taxa fixa deslocava o vídeo contra o áudio (bug real da fonte VFR do usuário).
         var src = Path.Combine(_workDir, "vfr.mkv");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=30:duration=10 " +
-                  $"-f lavfi -i testsrc2=size=320x180:rate=20:duration=5 " +
-                  $"-f lavfi -i sine=frequency=440:duration=15 " +
-                  $"-filter_complex \"[0:v][1:v]concat=n=2:v=1[v]\" " +
-                  $"-map \"[v]\" -map 2:a -c:v libx264 -pix_fmt yuv420p -c:a aac {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=10",
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=20:duration=5",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=15",
+            "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]",
+            "-map", "[v]", "-map", "2:a",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", src);
 
         var output = Path.Combine(_workDir, "vfr_out.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
@@ -135,9 +139,10 @@ public class UpscalePipelineIntegrationTests : IDisposable
         IntegrationHelpers.SkipIfNoOnnxModels();
 
         var src = Path.Combine(_workDir, "onnx_src.mp4");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x240:rate=24:duration=2 " +
-                  $"-f lavfi -i sine=frequency=440:duration=2 " +
-                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=24:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
         var output = Path.Combine(_workDir, "onnx_out.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
@@ -170,9 +175,10 @@ public class UpscalePipelineIntegrationTests : IDisposable
 
         // 35s = 2 chunks → 2 workers rodando Run() CONCORRENTE na MESMA sessão (thread-safe)
         var src = Path.Combine(_workDir, "onnx35.mp4");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x240:rate=24:duration=35 " +
-                  $"-f lavfi -i sine=frequency=440:duration=35 " +
-                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=24:duration=35",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=35",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
         var output = Path.Combine(_workDir, "onnx35_out.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);
@@ -218,9 +224,10 @@ public class UpscalePipelineIntegrationTests : IDisposable
         // -framerate fixa "acelerava" o vídeo ~4,2 ms POR CHUNK contra o áudio — ~200 ms de
         // desync numa parte de 24 min. Aqui vídeo e áudio precisam terminar juntos (±1,5 frame).
         var src = Path.Combine(_workDir, "ntsc.mkv");
-        IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=24000/1001:duration=65 " +
-                  $"-f lavfi -i sine=frequency=440:duration=65 " +
-                  $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+        IntegrationHelpers.RunFfmpeg(
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24000/1001:duration=65",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=65",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
         var output = Path.Combine(_workDir, "ntsc_out.mkv");
         var service = new UpscaleService(IntegrationHelpers.Tools.FfmpegPath!);

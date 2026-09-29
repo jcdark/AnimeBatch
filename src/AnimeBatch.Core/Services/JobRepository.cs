@@ -199,6 +199,18 @@ public class JobRepository(Func<AnimeBatchDbContext> contextFactory)
             .ConfigureAwait(false);
     }
 
+    /// <summary>Grava o resultado da QC de qualidade (VMAF/SSIM/PSNR) de uma parte.</summary>
+    public async Task SetItemQualityAsync(int itemId, double vmaf, double ssim, double psnr)
+    {
+        await using var db = _factory();
+        await db.JobItems.Where(i => i.Id == itemId)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.QualityVmaf, vmaf)
+                .SetProperty(i => i.QualitySsim, ssim)
+                .SetProperty(i => i.QualityPsnr, psnr))
+            .ConfigureAwait(false);
+    }
+
     /// <summary>Próximo job a executar (menor Order pendente) ou null se a fila estiver vazia/pausada.</summary>
     public async Task<Job?> PeekNextPendingAsync()
     {

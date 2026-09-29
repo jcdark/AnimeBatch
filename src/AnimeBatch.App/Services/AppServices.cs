@@ -66,7 +66,7 @@ internal static class AppServices
 
     public static async Task<TmdbService?> GetTmdbAsync()
     {
-        var key = await Settings.GetAsync(SettingsRepository.TmdbApiKey).ConfigureAwait(false);
+        var key = await Settings.GetAsync(SettingsRepository.TmdbKeySetting).ConfigureAwait(false);
         return key is { Length: > 0 } ? new TmdbService(key) : null;
     }
 
@@ -205,6 +205,10 @@ internal static class AppServices
                 av1anBestSource: Av1anHasBestSource),
             Merge = () => new MergeService(Tools.MkvMergePath!),
             Upscale = () => new UpscaleService(Tools.FfmpegPath!),
+            // QC de qualidade opcional (VMAF) — só existe com ffmpeg+ffprobe presentes
+            Quality = Tools.FfmpegPath is not null && Tools.FfprobePath is not null
+                ? () => new QualityCheckService(Tools.FfmpegPath!, Tools.FfprobePath!)
+                : null,
             OutputDirectory = GetOutputDirectory,
             LogCrash = LogCrash,
             CompletionSound = PlayCompletionSound,

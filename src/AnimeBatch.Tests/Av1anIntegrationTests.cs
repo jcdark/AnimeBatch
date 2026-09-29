@@ -69,9 +69,10 @@ public class Av1anIntegrationTests
         {
             // origem 20s; a parte é 4s→14s — força o pré-corte lossless (sem --trim no av1an)
             var src = Path.Combine(work, "src.mkv");
-            IntegrationHelpers.RunFfmpeg($"-f lavfi -i testsrc2=size=320x180:rate=24000/1001:duration=20 " +
-                      $"-f lavfi -i sine=frequency=440:duration=20 " +
-                      $"-c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {IntegrationHelpers.Quote(src)}");
+            IntegrationHelpers.RunFfmpeg(
+                "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=24000/1001:duration=20",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=20",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", "-y", src);
 
             var outPath = Path.Combine(work, "parte.mkv");
             var reports = new List<EncodeProgress>();

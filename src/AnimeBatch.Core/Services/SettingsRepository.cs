@@ -7,7 +7,9 @@ namespace AnimeBatch.Core.Services;
 /// <summary>Preferências chave/valor no banco (ex.: "tmdb.apikey").</summary>
 public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
 {
-    public const string TmdbApiKey = "tmdb.apikey";
+    /// <summary>Chave da API do TMDB no banco de configurações (o VALOR gravado é
+    /// "tmdb.apikey" — renomear a string do banco exigiria migração das instalações).</summary>
+    public const string TmdbKeySetting = "tmdb.apikey";
     public const string LanguageKey = "app.language";
     public const string OutputDirectory = "output.dir";
     public const string SourceDirectory = "source.dir";
@@ -22,6 +24,9 @@ public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
     public const string ToolsExtraDirs = "tools.extraDirs";
     /// <summary>Última pasta aberta na tela de Episódios — recarregada ao voltar à aba.</summary>
     public const string EpisodesLastFolder = "episodes.lastFolder";
+    /// <summary>QC de qualidade opcional: mede VMAF/SSIM/PSNR (libvmaf) de cada parte contra a
+    /// origem após o encode e grava no item. "true" = ligada; ausente = desligada (default).</summary>
+    public const string QueueQualityCheck = "queue.qualityCheck";
 
     private readonly Func<AnimeBatchDbContext> _factory = contextFactory;
 

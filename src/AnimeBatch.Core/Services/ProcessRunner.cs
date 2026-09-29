@@ -60,6 +60,32 @@ public static class ProcessRunner
         }
     }
 
+    /// <summary>Variante do Capture que devolve também o stderr (diagnóstico de falha em
+    /// testes). Mesmas garantias: nunca lança, timeout rígido com kill de árvore. O stderr é
+    /// drenado EM PARALELO ao stdout — leitura sequencial deadlocka quando o filho enche o
+    /// buffer do pipe (o banner do ffmpeg já passa de 4 KB) sem nunca fechar o stdout.</summary>
+    public static (string Stdout, string Stderr, bool Ok) CaptureWithStderr(
+        string exe, IReadOnlyList<string>? args, int timeoutMs)
+    {
+        try
+        {
+            using var proc = Start(exe, args);
+            var stderrTask = Task.Run(() => proc.StandardError.ReadToEnd());
+            var stdout = proc.StandardOutput.ReadToEnd();
+            var stderr = stderrTask.GetAwaiter().GetResult();
+            if (!proc.WaitForExit(timeoutMs))
+            {
+                TryKill(proc);
+                return ("", "", false);
+            }
+            return (stdout, stderr, proc.ExitCode == 0);
+        }
+        catch
+        {
+            return ("", "", false);
+        }
+    }
+
     public static void TryKill(Process proc)
     {
         try

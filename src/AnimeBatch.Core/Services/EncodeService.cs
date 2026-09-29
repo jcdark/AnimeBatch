@@ -52,7 +52,7 @@ public class EncodeService : Queueing.IEncodeStage
     private readonly int _av1anTailTickMs;
 
     /// <summary>Plugin BestSource do VapourSynth presente na máquina: chunks VS frame-exatos
-    /// (-m bestsource) em vez da segmentação por ffmpeg do Hybrid (fase silenciosa de minutos).</summary>
+    /// (-m bestsource) em vez da segmentação por ffmpeg (fase silenciosa de minutos).</summary>
     private readonly bool _av1anBestSource;
 
     /// <summary>handBrakeCliPath: quando presente, TODOS os encodes passam pelo HandBrakeCLI
@@ -410,6 +410,50 @@ public class EncodeService : Queueing.IEncodeStage
 
     // ---------------- Av1an (códigos av1an_*) ----------------
 
+    /// <summary>Pré-corte lossless (x264 qp0) quando a parte não é o arquivo inteiro.
+    /// -progress pipe:1 é OBRIGATÓRIO aqui: sem ele o stdout fica mudo, o RunFfmpegAsync
+    /// não emite relato nenhum (rodapé congelado em FPS 0.0/Elapsed 00:00 — parecia
+    /// "não convertendo" durante os ~15 min de corte) e o watchdog de stall ainda podia
+    /// matar um corte longo por inatividade.</summary>
+    public static string[] BuildPrecutArgs(string sourcePath, double startSeconds, double duration,
+        string pixFmt, string outputPath)
+    {
+        return
+        [
+            "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-progress", "pipe:1", "-nostats",
+            "-ss", startSeconds.ToString("0.##########", CultureInfo.InvariantCulture),
+            "-i", sourcePath,
+            "-t", duration.ToString("0.##########", CultureInfo.InvariantCulture),
+            "-map", "0:v:0", "-map", "0:a:0?", "-map_chapters", "-1",
+            "-c:v", "libx264", "-qp", "0", "-preset", "veryfast", "-pix_fmt", pixFmt,
+            "-c:a", "aac", "-b:a", "160k",
+            outputPath,
+        ];
+    }
+
+    /// <summary>RAM física estimada por processo do SvtAv1EncApp em 1080p (2-pass VBR,
+    /// lookahead 42). Medido com 37 chunks reais: ~2,4 GB no preset 4 e ~2,0 GB no 6 —
+    /// IGUAL no stock e no fork. Com -w = núcleos (32 no motor sequencial) o encode pedia
+    /// 60-77 GB e máquinas de 48 GB iam a OOM: "allocate memory failed" em cascata e
+    /// 0xc0000005 nos chunks (o dono viu isso no AV1 Híbrido IA 10bits p4 em 26/09).
+    /// Pega o pior caso + folga; não escala com preset para não depender de medida fina.</summary>
+    public const long Av1anWorkerMemoryBudget = 2_750_000_000;
+
+    /// <summary>Workers internos do av1an (chunks simultâneos): divide os núcleos entre as
+    /// instâncias que o pool de partes do QueueRunner puser para rodar, MAS limita pelo total
+    /// de processos × RAM por processo — sem isso o encode inteiro não cabe na memória.
+    /// <paramref name="totalMemoryBytes"/> = RAM física total (GC.GetGCMemoryInfo).</summary>
+    public static int Av1anInternalWorkers(int processorCount, int parallelWorkers, long totalMemoryBytes)
+    {
+        var byCpu = Math.Clamp(processorCount / Math.Max(1, parallelWorkers), 1, Math.Max(1, processorCount));
+        if (totalMemoryBytes <= 0)
+            return byCpu;
+        // 80% da RAM física para os encoders; o total de processos é paralelo × interno
+        var byMem = (int)(totalMemoryBytes * 0.8 / (Av1anWorkerMemoryBudget * Math.Max(1, parallelWorkers)));
+        return Math.Max(1, Math.Min(byCpu, byMem));
+    }
+
     /// <summary>
     /// Linha do av1an para os códigos av1an_*. --no-defaults SEMPRE: os defaults deles
     /// injetam --crf 25, que conflita com --rc 1/--tbr (o svt 4.x nem abre o encoder), e
@@ -498,17 +542,7 @@ public class EncodeService : Queueing.IEncodeStage
             {
                 precut = Path.Combine(workDir, $"precut_{Path.GetFileNameWithoutExtension(outputPath)}.mkv");
                 var pixFmt = cfg.Code.EndsWith("10bit", StringComparison.Ordinal) ? "yuv420p10le" : "yuv420p";
-                var cutArgs = new[]
-                {
-                    "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                    "-ss", item.StartSeconds.ToString("0.##########", CultureInfo.InvariantCulture),
-                    "-i", sourcePath,
-                    "-t", duration.ToString("0.##########", CultureInfo.InvariantCulture),
-                    "-map", "0:v:0", "-map", "0:a:0?", "-map_chapters", "-1",
-                    "-c:v", "libx264", "-qp", "0", "-preset", "veryfast", "-pix_fmt", pixFmt,
-                    "-c:a", "aac", "-b:a", "160k",
-                    precut,
-                };
+                var cutArgs = BuildPrecutArgs(sourcePath, item.StartSeconds, duration, pixFmt, precut);
                 // o pré-corte é um re-encode lossless (x264 qp0) que demora de verdade —
                 // relata progresso, senão o rodapé fica congelado nessa fase
                 await RunFfmpegAsync(cutArgs, ct, progress, duration).ConfigureAwait(false);
@@ -517,10 +551,11 @@ public class EncodeService : Queueing.IEncodeStage
             }
 
             // workers internos do av1an (chunks simultâneos): divide os núcleos entre as
-            // instâncias que o pool de partes do QueueRunner puser para rodar
-            var internalWorkers = Math.Clamp(
-                Environment.ProcessorCount / Math.Max(1, cfg.EffectiveParallelWorkers),
-                1, Math.Max(1, Environment.ProcessorCount));
+            // instâncias que o pool de partes do QueueRunner puser para rodar, com teto
+            // pela RAM física (cada SvtAv1EncApp segura ~2,5 GB em 1080p)
+            var internalWorkers = Av1anInternalWorkers(
+                Environment.ProcessorCount, cfg.EffectiveParallelWorkers,
+                GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
             var args = BuildAv1anArgs(cfg, kbps, inputPath, outputPath, tempDir, logfile, internalWorkers, audioParams,
                 bestSourceChunks: _av1anBestSource);
             await RunAv1anAsync(args, logfile, outputPath, ct, progress, duration).ConfigureAwait(false);
@@ -779,6 +814,14 @@ public class EncodeService : Queueing.IEncodeStage
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         var duration = Math.Max(0.001, item.EndSeconds - item.StartSeconds);
+
+        // Códigos hybrid_* foram removidos na 0.59 (motor sem diferencial prático; o
+        // experimento segue documentado no lab\). Um job antigo no banco com esse codec
+        // precisa falhar com instrução clara — NUNCA cair silenciosamente em outro motor.
+        if (cfg.Code.StartsWith("hybrid", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "O codec 'AV1 Híbrido IA' foi removido nesta versão. Use o 'AV1an 10bits' — mesmo " +
+                "encoder de referência, sem o experimento (ver lab\\plano-remocao-hibrido.md).");
 
         // Motor Av1an (códigos av1an_*): fatiamento por cena + chunks paralelos com o
         // SvtAv1EncApp. Tem que vir ANTES do HandBrake — é escolha explícita do codec.

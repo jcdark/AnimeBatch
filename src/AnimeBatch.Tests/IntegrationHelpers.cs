@@ -1,6 +1,4 @@
 using AnimeBatch.Core.Services;
-using System.Diagnostics;
-using System.Text;
 using Xunit;
 
 namespace AnimeBatch.Tests;
@@ -66,7 +64,8 @@ public static class IntegrationHelpers
         // com qualquer entrada — o ffmpeg sai com erro e o stderr traz o motivo.
         try
         {
-            RunFfmpeg("-f lavfi -i testsrc2=size=320x240:rate=24:duration=1 -c:v av1_nvenc -f null -");
+            RunFfmpeg("-f", "lavfi", "-i", "testsrc2=size=320x240:rate=24:duration=1",
+                      "-c:v", "av1_nvenc", "-f", "null", "-");
             return true;
         }
         catch (InvalidOperationException ex)
@@ -75,54 +74,14 @@ public static class IntegrationHelpers
         }
     }
 
-    /// <summary>Roda um ffmpeg de preparação (vídeo sintético lavfi); falha se sair com erro.</summary>
-    public static void RunFfmpeg(string args)
+    /// <summary>Roda um ffmpeg de preparação (vídeo sintético lavfi); falha se sair com erro.
+    /// Args DISCRETOS (um token por item) — sem linha de comando única para parsear; a
+    /// execução vai pelo ProcessRunner do Core (mesmo caminho homologado dos serviços).</summary>
+    public static void RunFfmpeg(params string[] args)
     {
-        var psi = new ProcessStartInfo(Tools.FfmpegPath!)
-        {
-            UseShellExecute = false,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        foreach (var a in SplitArgs(args))
-            psi.ArgumentList.Add(a);
-
-        using var proc = Process.Start(psi)!;
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit();
-        if (proc.ExitCode != 0)
+        var (_, stderr, ok) = ProcessRunner.CaptureWithStderr(
+            Tools.FfmpegPath!, args, timeoutMs: 600_000);
+        if (!ok)
             throw new InvalidOperationException($"ffmpeg de teste falhou: {stderr}");
-    }
-
-    public static string Quote(string s) => "\"" + s + "\"";
-
-    public static IEnumerable<string> SplitArgs(string line)
-    {
-        // parser simples: tokens entre aspas ficam inteiros
-        var parts = new List<string>();
-        var current = new StringBuilder();
-        var inQuotes = false;
-        foreach (var c in line)
-        {
-            if (c == '"')
-            {
-                inQuotes = !inQuotes;
-            }
-            else if (c == ' ' && !inQuotes)
-            {
-                if (current.Length > 0)
-                {
-                    parts.Add(current.ToString());
-                    current.Clear();
-                }
-            }
-            else
-            {
-                current.Append(c);
-            }
-        }
-        if (current.Length > 0)
-            parts.Add(current.ToString());
-        return parts;
     }
 }

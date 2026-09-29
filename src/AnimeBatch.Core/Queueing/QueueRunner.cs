@@ -61,6 +61,20 @@ public interface IProbeStage
     Task<EpisodeInfo> ProbeAsync(string videoPath, CancellationToken ct = default);
 }
 
+/// <summary>Pedido de QC de qualidade: referência = trecho da origem, distorcida = parte encodeada.</summary>
+public sealed record QualityCheckRequest(string RefPath, double RefStartSeconds, double RefDurationSeconds, string DistPath);
+
+/// <summary>Resultado da QC (médias pooled do libvmaf).</summary>
+public sealed record QualityResult(double Vmaf, double Ssim, double Psnr);
+
+/// <summary>QC de qualidade opcional (libvmaf), abstraída pelos mesmos motivos dos demais estágios
+/// (a fila roda em teste sem ffmpeg real; a implementação é QualityCheckService).</summary>
+public interface IQualityCheckStage
+{
+    /// <summary>Null = não medida (probe falhou, ffmpeg falhou, timeout) — nunca lança para falha de medição.</summary>
+    Task<QualityResult?> MeasureAsync(QualityCheckRequest req, CancellationToken ct);
+}
+
 /// <summary>
 /// Dependências do QueueRunner. Tudo que toca banco, processo ou máquina entra aqui — o
 /// App monta com as implementações reais (AppServices); os testes da fila montam com
@@ -81,6 +95,10 @@ public sealed class QueueRunnerDeps
     public required Func<TimeSpan, IEncodeStage> Encode { get; init; }
     public required Func<IMergeStage> Merge { get; init; }
     public required Func<IUpscaleStage> Upscale { get; init; }
+
+    /// <summary>Fábrica da QC de qualidade opcional (VMAF). Null = QC indisponível (a fila
+    /// segue normal, sem medir) — o App só monta quando ffmpeg/ffprobe existem.</summary>
+    public Func<IQualityCheckStage>? Quality { get; init; }
 
     /// <summary>Raiz de saída (o App devolve a setting output.dir com fallback pra Vídeos).</summary>
     public required Func<string> OutputDirectory { get; init; }
@@ -112,6 +130,7 @@ public class QueueRunner
     private CancellationTokenSource? _cts;
     private bool _pauseRequested;
     private bool _autoRemove;
+    private bool _qualityCheck;
     private readonly Stopwatch _stopwatch = new();
     private double _sessionConvertedSeconds;
     private double _jobDoneSeconds;
@@ -156,6 +175,10 @@ public class QueueRunner
         // "Remover da fila ao ser convertido": lido uma vez por execução
         _autoRemove = await _d.Settings
             .GetAsync(SettingsRepository.QueueAutoRemove)
+            .ConfigureAwait(false) == "true";
+        // QC de qualidade (VMAF) também é lida uma vez por execução; liga/desliga na fila.
+        _qualityCheck = await _d.Settings
+            .GetAsync(SettingsRepository.QueueQualityCheck)
             .ConfigureAwait(false) == "true";
         // (GPUs de upscaling são lidas POR JOB — mudar a configuração vale já no próximo job,
         // sem precisar parar e iniciar a fila de novo)
@@ -371,6 +394,45 @@ public class QueueRunner
         }
     }
 
+    /// <summary>Grava o resultado da QC serializado pelo mesmo _dbGate (escritas SQLite).</summary>
+    private async Task SetQualityGatedAsync(int itemId, QualityResult q)
+    {
+        await _dbGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _d.Jobs.SetItemQualityAsync(itemId, q.Vmaf, q.Ssim, q.Psnr).ConfigureAwait(false);
+        }
+        finally
+        {
+            _dbGate.Release();
+        }
+    }
+
+    /// <summary>QC de qualidade da parte (setting queue.qualityCheck): libvmaf origem×parte
+    /// gravado no item. BEST-EFFORT: qualquer falha é só logada — medição nunca derruba a fila
+    /// nem muda o estado (Done) que a parte já tem. Roda ANTES do delete do intermediário
+    /// (com upscale a referência é ele, para isolar a qualidade do encode).</summary>
+    private async Task RunQualityCheckAsync(PendingEncode e, CancellationToken ct)
+    {
+        if (!_qualityCheck || _d.Quality is null)
+            return;
+        try
+        {
+            var req = new QualityCheckRequest(e.SourcePath, e.Ref.StartSeconds, e.Duration, e.OutPath);
+            var result = await _d.Quality().MeasureAsync(req, ct).ConfigureAwait(false);
+            if (result is { } q)
+                await SetQualityGatedAsync(e.Item.Id, q).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // pausa/parada no meio da QC: a parte já está Done; a medição fica sem resultado
+        }
+        catch (Exception ex)
+        {
+            _d.LogCrash?.Invoke("QualityCheck", ex);
+        }
+    }
+
     private async Task ProcessJobAsync(Job job, IEncodeStage encode, IMergeStage merge, IUpscaleStage upscale, CancellationToken ct)
     {
         var baseName = Path.GetFileNameWithoutExtension(job.SourcePath);
@@ -553,6 +615,7 @@ public class QueueRunner
                     e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, e.Cfg, e.Item.TargetKbps, ct, progress).ConfigureAwait(false);
 
                 await SetItemGatedAsync(e.Item.Id, JobItemState.Done, e.OutPath).ConfigureAwait(false);
+                await RunQualityCheckAsync(e, ct).ConfigureAwait(false);
                 if (e.IntermediatePath is not null)
                     TryDelete(e.IntermediatePath);
             }
@@ -618,6 +681,7 @@ public class QueueRunner
                             e.SourcePath, e.Ref, e.OutPath, e.PassLogBase, e.Cfg, e.Item.TargetKbps, ct, progress, gpu).ConfigureAwait(false);
 
                         await SetItemGatedAsync(e.Item.Id, JobItemState.Done, e.OutPath).ConfigureAwait(false);
+                        await RunQualityCheckAsync(e, ct).ConfigureAwait(false);
                         if (e.IntermediatePath is not null)
                             TryDelete(e.IntermediatePath);
 

@@ -5,7 +5,7 @@ obj/
 *.user
 
 # Binários externos embutidos (populados por scripts/copiá-los manualmente; não versionar ~500MB)
-tools/
+/tools/
 data/*.db*
 logs/
 saida/
@@ -26,3 +26,9 @@ out/
 
 # Resultados de teste
 TestResults/
+
+# Laboratório AV1 híbrido — clipes/fontes e artefatos grandes fora do git
+lab/clips/
+lab/tmp/
+lab/dataset/
+lab/clips.local.json
