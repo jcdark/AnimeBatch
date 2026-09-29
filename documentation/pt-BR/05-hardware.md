@@ -8,7 +8,7 @@ A aba **Hardware (GPU)** lista as **placas de vídeo dedicadas** (PCI) do
 computador — as integradas na CPU ficam de fora — e permite dizer **quantos
 workers** cada uma deve usar.
 
-![Aba Hardware com duas GPUs](images/hardware-gpus.png)
+![Aba Hardware com duas GPUs](../images/hardware-gpus.png)
 
 ## O que é um worker
 

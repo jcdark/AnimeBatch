@@ -49,7 +49,12 @@ scripts/make-release.ps1              # versioned portable package into dist\
 
 ## User manual
 
-The full **user manual** lives in [`documentation/`](documentation/README.md) — one page per app menu (installation & concepts, queue, episodes, encodes, hardware, series, settings), with cross-page navigation and annotated screenshots. Start at the [Portuguese index](documentation/README.md) (matches the default UI language) or the [English index](documentation/README.en-US.md); section pages are in pt-BR. Developer-facing architecture notes remain in [`docs/arquitetura.md`](docs/arquitetura.md) (pt-BR).
+The full **user manual** lives in [`documentation/`](documentation/README.md), with a complete guide per language — one page per app menu, cross-page navigation and annotated screenshots (series names mosaicked for copyright safety):
+
+- 🇺🇸 **English** — [`documentation/en-US/README.md`](documentation/en-US/README.md): [Installation and concepts](documentation/en-US/01-installation-and-concepts.md) · [Queue](documentation/en-US/02-queue.md) · [Episodes](documentation/en-US/03-episodes.md) · [Encodes](documentation/en-US/04-encodes.md) · [Hardware](documentation/en-US/05-hardware.md) · [Series](documentation/en-US/06-series.md) · [Settings](documentation/en-US/07-settings.md)
+- 🇧🇷 **Português (Brasil)** — [`documentation/pt-BR/README.md`](documentation/pt-BR/README.md): [Instalação e conceitos](documentation/pt-BR/01-instalacao.md) · [Fila](documentation/pt-BR/02-fila.md) · [Episódios](documentation/pt-BR/03-episodios.md) · [Encodes](documentation/pt-BR/04-encodes.md) · [Hardware](documentation/pt-BR/05-hardware.md) · [Séries](documentation/pt-BR/06-series.md) · [Configurações](documentation/pt-BR/07-configuracoes.md)
+
+**The short version of the workflow:** set your source/output folders in *Settings* → register the series on *Series* (per-class bitrates, TMDB link) → on *Episodes*, check the files, split them into chapters (each chapter gets the bitrate it deserves) and enqueue → on *Queue*, hit *Start conversion* and watch the live footer; *When done* can even shut the PC down for you. Developer-facing architecture notes remain in [`docs/arquitetura.md`](docs/arquitetura.md) (pt-BR).
 
 ## Project layout
 
@@ -59,7 +64,7 @@ AnimeBatch/
 ├─ src/AnimeBatch.App/      WinUI 3 GUI (pages, queue UI, i18n pt-BR/en-US, assets)
 ├─ src/AnimeBatch.Core/     Engine-free core: models, EF Core + SQLite, encode services, queue runner
 ├─ src/AnimeBatch.Tests/    xUnit suite (unit + real encode/pipeline integration)
-├─ documentation/           User manual (one page per menu, pt-BR pages + en-US index, images)
+├─ documentation/           User manual (complete guides in en-US and pt-BR, one page per menu, images)
 ├─ docs/arquitetura.md      Pipeline, engine notes, GPU map (pt-BR)
 ├─ scripts/                 setup-tools, make-release, make-icon
 └─ tools/                   External binaries (downloaded, NOT committed)

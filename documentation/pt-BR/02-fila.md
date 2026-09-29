@@ -7,7 +7,7 @@
 A tela **Fila** (Fila de conversão) é onde os episódios enfileirados em
 *Episódios* são efetivamente convertidos, na ordem em que aparecem.
 
-![Fila vazia, recém-aberta](images/fila-vazia.png)
+![Fila vazia, recém-aberta](../images/fila-vazia.png)
 
 ## Botões de controle
 
@@ -26,7 +26,7 @@ sendo convertido (ou já concluído/com erro) não muda de lugar.
 
 ## Opções da linha inferior
 
-![Fila com itens e menu "Quando terminar" aberto](images/fila-quando-terminar.png)
+![Fila com itens e menu "Quando terminar" aberto](../images/fila-quando-terminar.png)
 
 - **Remover itens ao serem convertidos** — concluído o episódio, ele sai da
   lista sozinho (o histórico permanece na série e no banco).
@@ -46,9 +46,9 @@ Cada linha mostra: **posição · nome do arquivo · status · N partes · codec
 modelo/resolução de upscaling (se houver) · data do enfileiramento · ✏ editar ·
 ✖ remover**.
 
-![Editando um item da fila](images/fila-editar-item.png)
+![Editando um item da fila](../images/fila-editar-item.png)
 
-![Os itens da fila: status, partes, codec e ações](images/fila-itens.png)
+![Os itens da fila: status, partes, codec e ações](../images/fila-itens.png)
 
 O lápis (**✏**) abre o **Editar item da fila**, que permite mudar naquele item,
 sem re-enfileirar: **Codec de vídeo**, **Modo** (upscaling), **Modelo** e
@@ -65,7 +65,7 @@ Durante a conversão, o rodapé da janela vira um painel de status em tempo real
 Velocidade: 3.4x · Decorrido: 00:24 · Falta: 00:23 · Vídeo convertido: 0.9 min
 ```
 
-![Grade de capítulos com a fila rodando no rodapé](images/episodios-convertendo-rodape.png)
+![Grade de capítulos com a fila rodando no rodapé](../images/episodios-convertendo-rodape.png)
 
 Campo a campo:
 

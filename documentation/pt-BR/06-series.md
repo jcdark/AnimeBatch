@@ -9,7 +9,7 @@ define os **bitrates padrão por classe de capítulo** e acompanha o histórico
 de conversões. Toda série convertida pela tela [Episódios](03-episodios.md)
 aparece aqui automaticamente.
 
-![Detalhe da série com pôster e histórico](images/series-detalhe.png)
+![Detalhe da série com pôster e histórico](../images/series-detalhe.png)
 
 ## Cadastro e bitrates por classe
 
@@ -38,7 +38,7 @@ Com a **chave da API do TMDB** configurada (ver
 [Configurações](07-configuracoes.md)), o botão **Buscar no TMDB** abre o
 modal de vínculo:
 
-![Modal de busca no TMDB](images/series-tmdb-busca.png)
+![Modal de busca no TMDB](../images/series-tmdb-busca.png)
 
 - Pesquise pelo **nome da série** ou cole o **ID TMDB (opcional)** direto —
   se o nome é ambíguo, o ID resolve.

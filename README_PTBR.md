@@ -49,7 +49,12 @@ scripts/make-release.ps1              # pacote portátil versionado em dist\
 
 ## Manual do usuário
 
-O **manual completo** está em [`documentation/README.md`](documentation/README.md) — uma página por menu do app (instalação e conceitos, fila, episódios, encodes, hardware, séries, configurações), com navegação entre páginas e capturas de tela anotadas. Comece pelo [índice em português](documentation/README.md) ou pelo [índice em inglês](documentation/README.en-US.md); as páginas de seção estão em pt-BR. Notas de arquitetura (para quem desenvolve) continuam em [`docs/arquitetura.md`](docs/arquitetura.md).
+O **manual completo** está em [`documentation/`](documentation/README.md), com um guia completo por idioma — uma página por menu do app, navegação entre páginas e capturas de tela anotadas (nomes de séries cobertos por mosaico, por direitos autorais):
+
+- 🇧🇷 **Português (Brasil)** — [`documentation/pt-BR/README.md`](documentation/pt-BR/README.md): [Instalação e conceitos](documentation/pt-BR/01-instalacao.md) · [Fila](documentation/pt-BR/02-fila.md) · [Episódios](documentation/pt-BR/03-episodios.md) · [Encodes](documentation/pt-BR/04-encodes.md) · [Hardware](documentation/pt-BR/05-hardware.md) · [Séries](documentation/pt-BR/06-series.md) · [Configurações](documentation/pt-BR/07-configuracoes.md)
+- 🇺🇸 **English** — [`documentation/en-US/README.md`](documentation/en-US/README.md): [Installation and concepts](documentation/en-US/01-installation-and-concepts.md) · [Queue](documentation/en-US/02-queue.md) · [Episodes](documentation/en-US/03-episodes.md) · [Encodes](documentation/en-US/04-encodes.md) · [Hardware](documentation/en-US/05-hardware.md) · [Series](documentation/en-US/06-series.md) · [Settings](documentation/en-US/07-settings.md)
+
+**O fluxo em resumo:** configure as pastas de origem/saída em *Configurações* → cadastre a série em *Séries* (bitrates por classe, vínculo TMDB) → em *Episódios*, marque os arquivos, divida-os em capítulos (cada capítulo recebe o bitrate que merece) e enfileire → em *Fila*, clique em *Iniciar conversão* e acompanhe o rodapé ao vivo; o *Quando terminar* pode até desligar o PC para você. Notas de arquitetura (para quem desenvolve) continuam em [`docs/arquitetura.md`](docs/arquitetura.md).
 
 ## Estrutura
 
@@ -59,7 +64,7 @@ AnimeBatch/
 ├─ src/AnimeBatch.App/      GUI WinUI 3 (telas, fila, i18n pt-BR/en-US, assets)
 ├─ src/AnimeBatch.Core/     Núcleo sem GUI: modelos, EF Core + SQLite, serviços de encode, fila
 ├─ src/AnimeBatch.Tests/    Suíte xUnit (unitários + integração real de encode/pipeline)
-├─ documentation/           Manual do usuário (uma página por menu, páginas pt-BR + índice en-US, imagens)
+├─ documentation/           Manual do usuário (guias completos em pt-BR e en-US, uma página por menu, imagens)
 ├─ docs/arquitetura.md      Pipeline, notas dos motores, mapa de GPUs (pt-BR)
 ├─ scripts/                 setup-tools, make-release, make-icon
 └─ tools/                   Binários externos (baixados, NÃO versionados)

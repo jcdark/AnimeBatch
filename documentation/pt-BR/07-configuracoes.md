@@ -7,7 +7,7 @@
 A aba **Configurações** concentra as preferências globais do app — configure
 aqui uma vez e o resto do uso flui.
 
-![Topo da aba Configurações](images/configuracoes-geral.png)
+![Topo da aba Configurações](../images/configuracoes-geral.png)
 
 ## Integrações — chave do TMDB
 
@@ -54,7 +54,7 @@ reinstalações.
 
 ## Ferramentas embarcadas e créditos
 
-![Lista de ferramentas e créditos](images/configuracoes-creditos.png)
+![Lista de ferramentas e créditos](../images/configuracoes-creditos.png)
 
 A lista final mostra cada ferramenta que vem dentro do pacote e o papel dela —
 os nomes são links para os projetos originais:

@@ -8,7 +8,7 @@ A tela **Episódios** é o coração do AnimeBatch: é nela que você escolhe os
 arquivos, define **como** serão convertidos (codec, upscaling) e **em quantos
 pedaços** (grade de capítulos), e os manda para a fila.
 
-![Lista de episódios da pasta](images/episodios-lista.png)
+![Lista de episódios da pasta](../images/episodios-lista.png)
 
 ## Escolhendo a pasta
 
@@ -31,7 +31,7 @@ enfileirados a partir daqui:
   720p evita "esticar" demais a imagem.
 - **Codec de vídeo** — a família de encode AV1 (ver tabela abaixo).
 
-![Combo de codecs aberto](images/episodios-codec.png)
+![Combo de codecs aberto](../images/episodios-codec.png)
 
 | Codec | Características |
 |-------|-----------------|
@@ -43,14 +43,14 @@ Cada família tem configuração própria na aba [Encodes](04-encodes.md).
 
 ## Painel do arquivo selecionado
 
-![Painel do arquivo com um único capítulo](images/episodios-detalhe.png)
+![Painel do arquivo com um único capítulo](../images/episodios-detalhe.png)
 
 Clicando em um arquivo da lista, o painel à direita mostra o que o ffprobe
 encontrou nele: quantidade de **trilhas de áudio**, **legendas**,
 **capítulos** e a **duração**; e a estimativa de tamanho final com base nos
 bitrates atuais — **só vídeo**, **áudio** e o **total**.
 
-![Painel do arquivo com a grade de capítulos](images/episodios-capitulos.png)
+![Painel do arquivo com a grade de capítulos](../images/episodios-capitulos.png)
 
 ## A grade de capítulos
 
@@ -82,11 +82,11 @@ enfileirar de novo. Se o arquivo existe mas o tempo **não** bate mais (porque
 você mexeu na grade), o marcador fica vermelho e o clique no ✖ oferece
 **remover o arquivo** para não sobrar lixo sem conflito.
 
-![Tooltip do ✓ verde](images/episodios-parte-existe.png)
+![Tooltip do ✓ verde](../images/episodios-parte-existe.png)
 
 ### Adicionar / editar capítulo
 
-![Modal Adicionar capítulo](images/episodios-adicionar-capitulo.png)
+![Modal Adicionar capítulo](../images/episodios-adicionar-capitulo.png)
 
 O modal pede **apenas o tempo inicial** (`mm:ss` ou `hh:mm:ss` — pode ser com
 milissegundos, ex.: `0:55.930`); o fim é sempre derivado da grade. Os demais
@@ -149,7 +149,7 @@ direito). Detalhes:
 - Partes já convertidas e válidas são **reaproveitadas na junção sem
   re-encode** (a mensagem de confirmação mostra quantas).
 
-![Fila rodando — rodapé com passo 2/2 e alvo do capítulo](images/episodios-convertendo-rodape.png)
+![Fila rodando — rodapé com passo 2/2 e alvo do capítulo](../images/episodios-convertendo-rodape.png)
 
 ---
 

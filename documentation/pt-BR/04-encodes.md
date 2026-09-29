@@ -8,7 +8,7 @@ A aba **Encodes** guarda a configuração padrão de **cada codec** — o que vo
 define aqui vale para todos os capítulos que não tenham override próprio
 (feito no modal de capítulo da tela [Episódios](03-episodios.md)).
 
-![Aba Encodes com o codec AV1 10bits](images/encodes-av1.png)
+![Aba Encodes com o codec AV1 10bits](../images/encodes-av1.png)
 
 Selecione o **Codec** no combo, ajuste os campos e clique em **Salvar** — cada
 codec guarda a sua própria configuração.

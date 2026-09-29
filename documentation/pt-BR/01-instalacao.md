@@ -22,7 +22,7 @@ pasta baixada já é o programa completo. Basta descompactar em qualquer pasta d
 disco (por exemplo `F:\AnimeBatch\V0.61`) e executar o
 `AnimeBatchV0.61.exe` (o número muda conforme a versão).
 
-![Conteúdo do pacote release](images/instalacao-pacote.png)
+![Conteúdo do pacote release](../images/instalacao-pacote.png)
 
 Dentro da pasta você encontra, entre vários arquivos de sistema:
 
