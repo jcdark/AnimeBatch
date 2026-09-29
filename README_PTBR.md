@@ -47,6 +47,10 @@ scripts/make-release.ps1              # pacote portátil versionado em dist\
 
 > Na **solução**, não passe `-p:Platform=x64` (o .slnx não declara configuração x64); a flag vale só por projeto.
 
+## Manual do usuário
+
+O **manual completo** está em [`documentation/README.md`](documentation/README.md) — uma página por menu do app (instalação e conceitos, fila, episódios, encodes, hardware, séries, configurações), com navegação entre páginas e capturas de tela anotadas. Comece pelo [índice em português](documentation/README.md) ou pelo [índice em inglês](documentation/README.en-US.md); as páginas de seção estão em pt-BR. Notas de arquitetura (para quem desenvolve) continuam em [`docs/arquitetura.md`](docs/arquitetura.md).
+
 ## Estrutura
 
 ```
@@ -55,6 +59,7 @@ AnimeBatch/
 ├─ src/AnimeBatch.App/      GUI WinUI 3 (telas, fila, i18n pt-BR/en-US, assets)
 ├─ src/AnimeBatch.Core/     Núcleo sem GUI: modelos, EF Core + SQLite, serviços de encode, fila
 ├─ src/AnimeBatch.Tests/    Suíte xUnit (unitários + integração real de encode/pipeline)
+├─ documentation/           Manual do usuário (uma página por menu, páginas pt-BR + índice en-US, imagens)
 ├─ docs/arquitetura.md      Pipeline, notas dos motores, mapa de GPUs (pt-BR)
 ├─ scripts/                 setup-tools, make-release, make-icon
 └─ tools/                   Binários externos (baixados, NÃO versionados)

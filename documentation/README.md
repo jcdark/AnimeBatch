@@ -1,5 +1,7 @@
 # AnimeBatch — Manual do Usuário
 
+* Leia também em [English](README.en-US.md).
+
 Manual completo do **AnimeBatch**, o conversor de anime em lote para Windows
 (upscaling + re-encode AV1). Ele é organizado **por menu**, na mesma ordem em que
 os itens aparecem na barra lateral do aplicativo, e foi escrito a partir do

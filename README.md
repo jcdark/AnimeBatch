@@ -47,6 +47,10 @@ scripts/make-release.ps1              # versioned portable package into dist\
 
 > Build the **solution** without `-p:Platform=x64` (the .slnx has no x64 solution configuration); the flag is project-level only.
 
+## User manual
+
+The full **user manual** lives in [`documentation/`](documentation/README.md) — one page per app menu (installation & concepts, queue, episodes, encodes, hardware, series, settings), with cross-page navigation and annotated screenshots. Start at the [Portuguese index](documentation/README.md) (matches the default UI language) or the [English index](documentation/README.en-US.md); section pages are in pt-BR. Developer-facing architecture notes remain in [`docs/arquitetura.md`](docs/arquitetura.md) (pt-BR).
+
 ## Project layout
 
 ```
@@ -55,6 +59,7 @@ AnimeBatch/
 ├─ src/AnimeBatch.App/      WinUI 3 GUI (pages, queue UI, i18n pt-BR/en-US, assets)
 ├─ src/AnimeBatch.Core/     Engine-free core: models, EF Core + SQLite, encode services, queue runner
 ├─ src/AnimeBatch.Tests/    xUnit suite (unit + real encode/pipeline integration)
+├─ documentation/           User manual (one page per menu, pt-BR pages + en-US index, images)
 ├─ docs/arquitetura.md      Pipeline, engine notes, GPU map (pt-BR)
 ├─ scripts/                 setup-tools, make-release, make-icon
 └─ tools/                   External binaries (downloaded, NOT committed)
