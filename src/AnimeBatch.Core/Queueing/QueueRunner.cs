@@ -45,7 +45,8 @@ public interface IMergeStage
 {
     Task MergeAsync(
         IReadOnlyList<(string PartPath, string Title, double StartSeconds, double EndSeconds, bool IsCritical)> parts,
-        string finalPath, string chaptersPath, CancellationToken ct);
+        string finalPath, string chaptersPath, CancellationToken ct,
+        string? chaptersTxtOverride = null);
 }
 
 /// <summary>Estágio de upscale nos dois motores (ncnn legado e ONNX/DirectML).</summary>
@@ -569,7 +570,17 @@ public class QueueRunner
             .Select(e => (PartPath: e.Path, e.Item.Title, e.Item.StartSeconds, e.Item.EndSeconds,
                 IsCritical: e.Item.Class == BitrateClass.Critical || e.Item.IsTemporary))
             .ToList();
-        await merge.MergeAsync(mergeParts, finalPath, chaptersPath, ct).ConfigureAwait(false);
+        // Job com Calibragem Automática: TODAS as partes são temporárias (não gerariam
+        // entrada nenhuma) — os capítulos do arquivo final saem do snapshot da grade
+        // REGULAR gravado no enfileiramento (FinalChaptersJson).
+        string? chaptersTxtOverride = null;
+        if (job.UseCalibration)
+        {
+            var finals = MergeService.ParseFinalChapters(job.FinalChaptersJson);
+            if (finals is { Count: > 0 })
+                chaptersTxtOverride = MergeService.BuildFinalChaptersTxt(finals);
+        }
+        await merge.MergeAsync(mergeParts, finalPath, chaptersPath, ct, chaptersTxtOverride).ConfigureAwait(false);
 
         // Histórico (tela de Séries → Arquivos Convertidos)
         var series = await _d.Series

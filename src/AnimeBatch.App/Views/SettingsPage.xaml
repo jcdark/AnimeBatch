@@ -42,6 +42,20 @@
             <TextBox x:Name="UpscaleGpusBox" MinWidth="280" MaxWidth="720" HorizontalAlignment="Left" />
             <TextBlock x:Name="UpscaleGpusHint" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
 
+            <!-- Calibragem Automática: bitrate (kbps) por nível de criticidade -->
+            <TextBlock x:Name="CalibrationHeader" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" />
+            <TextBlock x:Name="CalibrationExplanation" FontSize="12" Foreground="Gray" TextWrapping="Wrap"
+                       MaxWidth="720" HorizontalAlignment="Left" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <NumberBox x:Name="NumCalVeryLow" MinWidth="140" SpinButtonPlacementMode="Compact" SmallChange="50" Minimum="0" />
+                <NumberBox x:Name="NumCalLow" MinWidth="140" SpinButtonPlacementMode="Compact" SmallChange="50" Minimum="0" />
+                <NumberBox x:Name="NumCalNormal" MinWidth="140" SpinButtonPlacementMode="Compact" SmallChange="50" Minimum="0" />
+                <NumberBox x:Name="NumCalHigh" MinWidth="140" SpinButtonPlacementMode="Compact" SmallChange="50" Minimum="0" />
+                <NumberBox x:Name="NumCalVeryHigh" MinWidth="140" SpinButtonPlacementMode="Compact" SmallChange="50" Minimum="0" />
+                <Button x:Name="BtnSaveCalibration" Click="BtnSaveCalibration_Click" VerticalAlignment="Bottom" />
+            </StackPanel>
+            <TextBlock x:Name="CalibrationHint" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />
+
             <!-- Base de dados local (AppData): arquivo, tamanho e limpeza -->
             <TextBlock x:Name="DatabaseHeader" FontSize="16" FontWeight="SemiBold" Margin="0,16,0,0" />
             <TextBlock x:Name="DbInfoText" FontSize="12" Foreground="Gray" TextWrapping="Wrap" />

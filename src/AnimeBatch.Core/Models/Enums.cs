@@ -11,6 +11,19 @@ public enum BitrateClass
     Critical = 3
 }
 
+/// <summary>Nível de criticidade de bitrate da Calibragem Automática — derivado da encode de
+/// análise (SVT 1-pass): cada janela do vídeo é classificada numa de 5 faixas entre o trecho
+/// que menos consumiu e o que mais consumiu. O nome vira o título do bloco na grade de
+/// calibragem e o valor vem das settings (calibracao.*). Gravado como texto no JSON — não reordenar.</summary>
+public enum CalibrationLevel
+{
+    VeryLow = 0,
+    Low = 1,
+    Normal = 2,
+    High = 3,
+    VeryHigh = 4
+}
+
 public enum KeywordCategory
 {
     Op,

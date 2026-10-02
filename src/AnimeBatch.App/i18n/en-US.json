@@ -237,6 +237,27 @@
         "encodes.scenecut": "Scene detection",
         "encodes.scenecutPrecise": "Precise (full resolution)",
         "encodes.scenecutFast": "Fast (720p analysis) — recommended",
-        "encodes.scenecutMax": "Max speed (360p + fast method)"
+        "encodes.scenecutMax": "Max speed (360p + fast method)",
+        "episodes.calibrate": "Automatic calibration",
+        "episodes.calibrationTab": "Calibration",
+        "episodes.deleteCalibration": "Delete calibration",
+        "episodes.deleteCalibrationMsg": "Delete the calibration for this episode? The system goes back to using the regular chapters when enqueueing.",
+        "episodes.deleteCalibrationFiles": "Also remove the {0} already-converted calibration part(s) in the folder",
+        "episodes.calibrateTitle": "Automatic calibration — {0}",
+        "episodes.calibrateHint": "Analyzing the video with a reference encode (SVT 1-pass @ {0} kbps) to measure how much bitrate each stretch consumes. This can take a few minutes.",
+        "episodes.calibratePhaseEncode": "analysis encode…",
+        "episodes.calibratePhaseMeasure": "measuring blocks by criticality…",
+        "episodes.calibrateCancel": "Cancel",
+        "episodes.calibrateMissing": "⚠ Set the bitrate of each level (Very Low, Low, Normal, High, Very High) in Settings → Automatic calibration before calibrating.",
+        "episodes.calibrateFailed": "Could not analyze the video (duration unavailable).",
+        "episodes.calibrateDone": "✓ Calibration created: {0} blocks (measured consumption between {1} and {2} kbps). Blocks NEVER become chapters in the final file — when enqueuing they define the cuts and the regular chapters stay in the video.",
+        "calib.level.veryLow": "Very Low",
+        "calib.level.low": "Low",
+        "calib.level.normal": "Normal",
+        "calib.level.high": "High",
+        "calib.level.veryHigh": "Very High",
+        "settings.calibrationHeader": "Automatic calibration",
+        "settings.calibrationExplanation": "Automatic calibration analyzes the video (a single-pass reference encode) and measures how much bitrate each scene really consumes — from Very Low to Very High. Set here the total kbps of each level: when calibrating, the video is split into blocks by criticality and each block gets its level's bitrate. Blocks never become chapters in the final file.",
+        "settings.calibrationSave": "Save"
     }
 }

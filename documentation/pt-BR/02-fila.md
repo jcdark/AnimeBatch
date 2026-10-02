@@ -56,6 +56,11 @@ sem re-enfileirar: **Codec de vídeo**, **Modo** (upscaling), **Modelo** e
 configuração. A edição (e a reordenação) fica **indisponível enquanto a fila
 está processando**.
 
+**Sufixo [CA]** — episódios enfileirados com a
+[Calibragem Automática](03-episodios.md) mostram **[CA]** no fim do nome do
+arquivo: os cortes da conversão saem dos blocos de calibragem, e os capítulos
+normais seguem como marcadores do arquivo final.
+
 ## Lendo o rodapé de progresso
 
 Durante a conversão, o rodapé da janela vira um painel de status em tempo real:

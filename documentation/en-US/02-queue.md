@@ -53,6 +53,11 @@ item alone, without re-enqueueing: **Video codec**, **Mode** (upscaling),
 new configuration. Editing (and reordering) is **unavailable while the queue
 is processing**.
 
+**[CA] suffix** — episodes enqueued with
+[Automatic calibration](03-episodes.md) show **[CA]** at the end of the file
+name: the conversion cuts come from the calibration blocks, and the regular
+chapters stay as the final file's markers.
+
 ## Reading the progress footer
 
 During conversion, the window footer becomes a live status panel:

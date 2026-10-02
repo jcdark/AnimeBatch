@@ -42,6 +42,17 @@ the *Detected* list under the field shows what exists on the machine. When
 the [Hardware (GPU)](05-hardware.md) tab is configured, **it takes
 precedence** over this field.
 
+## Automatic calibration
+
+Automatic calibration **analyzes the video** (a single-pass reference encode)
+and **measures how much bitrate each scene really consumes** — from Very Low
+to Very High — to split the episode into blocks by criticality and give each
+block its level's bitrate. Here you set the **total kbps of each level**
+(Very Low, Low, Normal, High, Very High) and click **Save**. Until all five
+values are saved, the calibrate button on the
+[Episodes](03-episodes.md) screen stays blocked. Starting points: 300 / 600 /
+1000 / 1600 / 2400 kbps.
+
 ## Database
 
 Shows where the database lives (`%LOCALAPPDATA%\AnimeBatch\animebatch.db`)

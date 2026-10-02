@@ -28,6 +28,7 @@ public sealed partial class EpisodesPage : Page
     private readonly ObservableCollection<EpisodeViewModel> _episodes = [];
     private EpisodeViewModel? _selected;
     private NotifyCollectionChangedEventHandler? _chaptersChangedHandler;
+    private NotifyCollectionChangedEventHandler? _calibrationChangedHandler;
     private CodecEncodeConfig? _codecCfg;
     private string? _codecCfgFor;
 
@@ -45,8 +46,11 @@ public sealed partial class EpisodesPage : Page
         BtnPickFolder.Content = t.T("episodes.pickFolder");
         ChaptersHeader.Text = t.T("episodes.chapters");
         BtnAddChapter.Content = t.T("episodes.addChapter");
-        BtnResetChapters.Content = t.T("episodes.resetChapters");
-        ToolTipService.SetToolTip(BtnResetChapters, t.T("episodes.resetChaptersHint"));
+        BtnCalibrate.Content = t.T("episodes.calibrate");
+        MenuResetChapters.Text = t.T("episodes.resetChapters");
+        BtnDeleteCalibration.Content = t.T("episodes.deleteCalibration");
+        PivotChapters.Header = t.T("episodes.chapters");
+        PivotCalibration.Header = t.T("episodes.calibrationTab");
         BtnEnqueue.Content = t.T("episodes.enqueue");
         CmbUpscaleNone.Content = t.T("episodes.upscaleNone");
         CmbUpscaleOnly.Content = t.T("episodes.upscaleOnly");
@@ -145,11 +149,19 @@ public sealed partial class EpisodesPage : Page
         SetDetailVisible(true);
         MatchLabel.Text = "";
         EpisodeInfoLabel.Text = "";
+        // volta para a aba de Capítulos ao trocar de episódio
+        if (ChaptersPivot.SelectedIndex != 0)
+            ChaptersPivot.SelectedIndex = 0;
         // o botão de reset aparece logo (o arquivo de edição independe da sonda)
         ep.HasChapterEdits = AppServices.ChapterEdits.ExistsFor(ep.FullPath);
         UpdateResetButton();
         BindChapters(ep);
+        BindCalibration(ep);
+        UpdateTabButtons();
         _ = EvaluatePartFilesAsync(ep);
+        // a calibragem salva (calibracoes\{stem}-{hash}.json) também independe da sonda
+        Ui.Safe(async () => await LoadCalibrationAsync(ep),
+            ex => ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message));
 
         if (AppServices.Probe is null)
         {
@@ -181,6 +193,139 @@ public sealed partial class EpisodesPage : Page
         ep.Chapters.CollectionChanged += _chaptersChangedHandler;
         ResequenceChapters();
         _ = UpdateSizeEstimateAsync();
+    }
+
+    // ---------- grade paralela da Calibragem Automática ----------
+
+    /// <summary>Aba da Calibragem está visível?</summary>
+    private bool CalibrationTabActive => ChaptersPivot?.SelectedIndex == 1;
+
+    private IEnumerable<ChapterItemViewModel> CalibrationItems() =>
+        CalibrationList.ItemsSource as IEnumerable<ChapterItemViewModel> ?? [];
+
+    /// <summary>Os itens da grade ATIVA (aba visível) — editais/estimativas seguem a aba.</summary>
+    private IEnumerable<ChapterItemViewModel> ActiveChapters() =>
+        CalibrationTabActive ? CalibrationItems() : Chapters();
+
+    private ObservableCollection<ChapterItemViewModel>? ActiveCollection() =>
+        CalibrationTabActive
+            ? CalibrationList.ItemsSource as ObservableCollection<ChapterItemViewModel>
+            : ChaptersList.ItemsSource as ObservableCollection<ChapterItemViewModel>;
+
+    /// <summary>Liga a coleção de calibragem do episódio à lista (mesmo esquema de renumeração
+    /// e reavaliação da grade normal — os NOMES das partes de calibragem também mudam).</summary>
+    private void BindCalibration(EpisodeViewModel ep)
+    {
+        if (_calibrationChangedHandler is not null && CalibrationList.ItemsSource is ObservableCollection<ChapterItemViewModel> oldCol)
+            oldCol.CollectionChanged -= _calibrationChangedHandler;
+
+        _calibrationChangedHandler = (_, _) =>
+        {
+            ResequenceCalibration();
+            _ = UpdateSizeEstimateAsync();
+            _ = EvaluatePartFilesAsync(ep); // reordenar renumera → os NOMES das partes mudam
+        };
+
+        CalibrationList.ItemsSource = ep.CalibrationChapters;
+        ep.CalibrationChapters.CollectionChanged += _calibrationChangedHandler;
+        ResequenceCalibration();
+    }
+
+    private void ResequenceCalibration()
+    {
+        var i = 1;
+        foreach (var chapter in CalibrationItems())
+            chapter.Number = i++;
+    }
+
+    /// <summary>Carrega a calibragem salva do episódio (calibracoes\). Sem arquivo, a grade
+    /// fica vazia e a aba desabilitada — o usuário calibra pelo botão.</summary>
+    private async Task LoadCalibrationAsync(EpisodeViewModel ep)
+    {
+        ep.CalibrationChapters.Clear();
+        var data = AppServices.Calibrations.Load(ep.FullPath);
+        if (data is null || data.Blocks.Count == 0)
+        {
+            ep.HasCalibration = false;
+        }
+        else
+        {
+            var kbpsByLevel = await LoadCalibrationKbpsAsync();
+            foreach (var b in data.Blocks)
+                ep.CalibrationChapters.Add(await CreateCalibrationVM(b, kbpsByLevel));
+            ep.HasCalibration = true;
+        }
+        UpdateTabButtons();
+    }
+
+    /// <summary>VM de um bloco de calibragem: título = nome do nível, alvo = kbps do bloco
+    /// (ou CQ com override) e SEMPRE temporário — nunca vira capítulo no arquivo final.</summary>
+    private async Task<ChapterItemViewModel> CreateCalibrationVM(CalibrationBlockRecord r, int?[] kbpsByLevel)
+    {
+        var level = CalibrationStore.ParseLevel(r.Level);
+        var cfg = await GetSelectedCodecConfigAsync();
+        var kbps = r.TargetKbps > 0 ? r.TargetKbps : kbpsByLevel[(int)level] ?? 0;
+        var chapter = new ChapterItemViewModel
+        {
+            Number = r.Number,
+            Title = LevelLabel(level),
+            TimeRange = $"{FormatTime(r.StartSeconds)} → {FormatTime(r.EndSeconds)}",
+            Class = BitrateClass.Episode,
+            Calibration = level,
+            TargetKbps = kbps,
+            TargetLabel = BuildLevelTargetLabel(level, kbps, r.Cq, cfg),
+            StartSeconds = r.StartSeconds,
+            EndSeconds = r.EndSeconds,
+            Include = r.Include,
+            IsTemporary = true,
+            Preset = r.Preset,
+            Cq = r.Cq,
+        };
+        HookChapter(chapter);
+        return chapter;
+    }
+
+    private string LevelLabel(CalibrationLevel level) => level switch
+    {
+        CalibrationLevel.VeryLow => AppServices.Localizer.T("calib.level.veryLow"),
+        CalibrationLevel.Low => AppServices.Localizer.T("calib.level.low"),
+        CalibrationLevel.High => AppServices.Localizer.T("calib.level.high"),
+        CalibrationLevel.VeryHigh => AppServices.Localizer.T("calib.level.veryHigh"),
+        _ => AppServices.Localizer.T("calib.level.normal"),
+    };
+
+    /// <summary>Rótulo do alvo do bloco: mesmo formato da grade normal, com o nome do nível.</summary>
+    private string BuildLevelTargetLabel(CalibrationLevel level, int kbps, int cq, CodecEncodeConfig cfg) =>
+        cfg.UseConstantQuality
+            ? cq > 0 ? $"{LevelLabel(level)} · CQ {cq}" : LevelLabel(level)
+            : $"{LevelLabel(level)} · {kbps} kbps";
+
+    /// <summary>Bitrates definidos em Configurações → Calibragem Automática, por nível
+    /// (índice = CalibrationLevel). null = não setado/inválido.</summary>
+    private static async Task<int?[]> LoadCalibrationKbpsAsync()
+    {
+        var keys = new[]
+        {
+            SettingsRepository.CalibrationVeryLowKbps,
+            SettingsRepository.CalibrationLowKbps,
+            SettingsRepository.CalibrationNormalKbps,
+            SettingsRepository.CalibrationHighKbps,
+            SettingsRepository.CalibrationVeryHighKbps,
+        };
+        var result = new int?[keys.Length];
+        for (var i = 0; i < keys.Length; i++)
+        {
+            var raw = await AppServices.Settings.GetAsync(keys[i]);
+            result[i] = int.TryParse(raw, out var v) && v > 0 ? v : null;
+        }
+        return result;
+    }
+
+    /// <summary>Bitrate do nível lido das settings quando o bloco não tem valor próprio.</summary>
+    private static async Task<int> LevelKbpsAsync(CalibrationLevel level)
+    {
+        var values = await LoadCalibrationKbpsAsync();
+        return values[(int)level] ?? 0;
     }
 
     /// <summary>Sufixo " - S01E02" para o cabeçalho dos detalhes; vazio sem tag no arquivo.</summary>
@@ -286,11 +431,38 @@ public sealed partial class EpisodesPage : Page
         return chapter;
     }
 
-    /// <summary>Botão "Resetar Capítulos": só existe com grade editada salva para o vídeo.</summary>
+    /// <summary>"Resetar Capítulos" vive no menu ⋯ e só fica habilitado com grade editada salva.</summary>
     private void UpdateResetButton() =>
-        BtnResetChapters.Visibility = _selected?.HasChapterEdits == true
+        MenuResetChapters.IsEnabled = _selected?.HasChapterEdits == true;
+
+    /// <summary>Botões que trocam conforme a aba ativa: na Calibragem, "Adicionar capítulo"
+    /// e o menu de reset saem e entra o "Excluir Calibragem"; a aba em si só habilita com
+    /// calibragem salva para o episódio.</summary>
+    private void UpdateTabButtons()
+    {
+        var hasEpisode = _selected is not null;
+        PivotCalibration.IsEnabled = hasEpisode && _selected!.HasCalibration;
+        if (ChaptersPivot.SelectedIndex == 1 && (PivotCalibration is null || !PivotCalibration.IsEnabled))
+            ChaptersPivot.SelectedIndex = 0;
+
+        var cal = CalibrationTabActive;
+        var vis = cal ? Visibility.Collapsed : Visibility.Visible;
+        BtnCalibrate.Visibility = hasEpisode ? Visibility.Visible : Visibility.Collapsed;
+        BtnChaptersMenu.Visibility = vis;
+        BtnAddChapter.Visibility = vis;
+        MenuResetChapters.IsEnabled = _selected?.HasChapterEdits == true;
+        BtnDeleteCalibration.Visibility = cal && _selected?.HasCalibration == true
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void ChaptersPivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ChaptersPivot is null || BtnCalibrate is null)
+            return; // disparo durante o parse do XAML
+        UpdateTabButtons();
+        _ = UpdateSizeEstimateAsync(); // estimativa segue a grade da aba ativa
+    }
 
     /// <summary>Grava a grade atual como edição do episódio (chamado ao adicionar/editar/
     /// remover capítulo). Grade vazia apaga a edição — volta ao comportamento original.</summary>
@@ -403,6 +575,231 @@ public sealed partial class EpisodesPage : Page
         }, ex => ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message));
     }
 
+    // ---------- Calibragem Automática ----------
+
+    /// <summary>Grava a grade de calibragem atual do episódio (calibracoes\). Grade vazia
+    /// apaga o arquivo — de volta ao uso dos capítulos normais.</summary>
+    private void SaveCalibration(EpisodeViewModel? ep)
+    {
+        if (ep is null)
+            return;
+
+        try
+        {
+            if (ep.CalibrationChapters.Count == 0)
+            {
+                AppServices.Calibrations.Delete(ep.FullPath);
+                ep.HasCalibration = false;
+            }
+            else
+            {
+                AppServices.Calibrations.Save(ep.FullPath, CalibrationService.AnalysisKbps, [.. ep.CalibrationChapters.Select(c =>
+                    new CalibrationBlockRecord(c.Number, CalibrationStore.FormatLevel(c.Calibration ?? CalibrationLevel.Normal),
+                        c.StartSeconds, c.EndSeconds, c.TargetKbps, c.Include, c.Preset, c.Cq))]);
+                ep.HasCalibration = true;
+            }
+            UpdateTabButtons();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message);
+        }
+    }
+
+    private async void BtnCalibrate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } ep)
+            return;
+        var t = AppServices.Localizer;
+
+        // sem ffmpeg/ffprobe a análise não existe
+        if (AppServices.Probe is null || string.IsNullOrEmpty(AppServices.Tools.FfmpegPath) || string.IsNullOrEmpty(AppServices.Tools.FfprobePath))
+        {
+            ShowStatus(InfoBarSeverity.Error,
+                t.T("episodes.ffprobeMissingTitle"), t.T("episodes.ffprobeMissingMsg"));
+            return;
+        }
+
+        // os 5 bitrates de nível são OBRIGATÓRIOS (Configurações → Calibragem Automática)
+        var kbpsByLevel = await LoadCalibrationKbpsAsync();
+        if (kbpsByLevel.Any(v => v is null or <= 0))
+        {
+            await new ContentDialog
+            {
+                Title = t.T("episodes.calibrate"),
+                Content = t.T("episodes.calibrateMissing"),
+                CloseButtonText = t.T("episodes.addDialog.cancel"),
+                XamlRoot = this.XamlRoot,
+            }.ShowAsync();
+            return;
+        }
+
+        // a análise precisa da duração (probe em cache ao selecionar; aqui garante)
+        if (ep.Probed is null)
+            await ProbeEpisodeAsync(ep);
+        if (ep.Probed is not { } info || info.DurationSeconds <= 0)
+        {
+            ShowStatus(InfoBarSeverity.Error, ep.FileName, t.T("episodes.calibrateFailed"));
+            return;
+        }
+
+        // ---- modal de progresso (fechar = cancelar a análise) ----
+        var cts = new CancellationTokenSource();
+        var bar = new Microsoft.UI.Xaml.Controls.ProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            IsIndeterminate = true,
+        };
+        var phase = new TextBlock
+        {
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+            TextWrapping = TextWrapping.Wrap,
+            Text = t.T("episodes.calibratePhaseEncode"),
+        };
+        var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = t.T("episodes.calibrateHint", CalibrationService.AnalysisKbps),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(bar);
+        panel.Children.Add(phase);
+
+        var dialog = new ContentDialog
+        {
+            Title = t.T("episodes.calibrateTitle", ep.FileName),
+            Content = panel,
+            CloseButtonText = t.T("episodes.calibrateCancel"),
+            XamlRoot = this.XamlRoot,
+        };
+        dialog.Closed += (_, _) => cts.Cancel();
+
+        var service = new CalibrationService(AppServices.Tools.FfmpegPath!, AppServices.Tools.FfprobePath!);
+        var progress = new Progress<CalibrationProgress>(p =>
+        {
+            // primeira saída do ffmpeg marca o fim do indeterminado
+            bar.IsIndeterminate = false;
+            bar.Value = p.Percent;
+            phase.Text = p.Phase == "measure"
+                ? t.T("episodes.calibratePhaseMeasure")
+                : t.T("episodes.calibratePhaseEncode");
+        });
+
+        var analysis = Task.Run(() => service.AnalyzeAsync(ep.FullPath, info.DurationSeconds, progress, cts.Token));
+        _ = dialog.ShowAsync();
+
+        CalibrationResult result;
+        try
+        {
+            result = await analysis;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException)
+        {
+            dialog.Hide();
+            if (ex is not OperationCanceledException)
+                ShowStatus(InfoBarSeverity.Error, t.T("episodes.calibrate"), ex.Message);
+            return;
+        }
+        dialog.Hide();
+
+        // ---- monta a grade com o kbps de CADA nível vindo das settings ----
+        var cfg = await GetSelectedCodecConfigAsync();
+        ep.CalibrationChapters.Clear();
+        foreach (var b in result.Blocks)
+        {
+            var kbps = kbpsByLevel[(int)b.Level] ?? 0;
+            var chapter = new ChapterItemViewModel
+            {
+                Number = b.Number,
+                Title = LevelLabel(b.Level),
+                TimeRange = $"{FormatTime(b.StartSeconds)} → {FormatTime(b.EndSeconds)}",
+                Class = BitrateClass.Episode,
+                Calibration = b.Level,
+                TargetKbps = kbps,
+                TargetLabel = BuildLevelTargetLabel(b.Level, kbps, 0, cfg),
+                StartSeconds = b.StartSeconds,
+                EndSeconds = b.EndSeconds,
+                Include = true,
+                IsTemporary = true,
+            };
+            HookChapter(chapter);
+            ep.CalibrationChapters.Add(chapter);
+        }
+        SaveCalibration(ep);
+        ResequenceCalibration();
+        ChaptersPivot.SelectedIndex = 1; // vai direto para a aba da calibragem
+        UpdateTabButtons();
+        _ = EvaluatePartFilesAsync(ep);
+        ShowStatus(InfoBarSeverity.Success, t.T("episodes.calibrate"),
+            t.T("episodes.calibrateDone", result.Blocks.Count, (int)result.MinKbps, (int)result.MaxKbps));
+    }
+
+    /// <summary>"Excluir Calibragem": apaga o arquivo e (opcional, via checkbox) as partes
+    /// já convertidas da calibragem — de volta ao uso dos capítulos normais.</summary>
+    private async void BtnDeleteCalibration_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selected is not { } ep || !ep.HasCalibration)
+            return;
+        var t = AppServices.Localizer;
+
+        var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
+        var workDir = JobPaths.WorkDirectory(AppServices.GetOutputDirectory(), baseName);
+        var partFiles = CalibrationItems()
+            .Select(c => Path.Combine(workDir, JobPaths.PartFileName(c.Number, c.Title, baseName)))
+            .Where(File.Exists)
+            .ToList();
+
+        var alsoDelete = new CheckBox { Content = t.T("episodes.deleteCalibrationFiles", partFiles.Count), IsChecked = partFiles.Count > 0 };
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(new TextBlock { Text = t.T("episodes.deleteCalibrationMsg"), TextWrapping = TextWrapping.Wrap });
+        if (partFiles.Count > 0)
+            content.Children.Add(alsoDelete);
+
+        var dialog = new ContentDialog
+        {
+            Title = t.T("episodes.deleteCalibration"),
+            Content = content,
+            PrimaryButtonText = t.T("episodes.partRemoveYes"),
+            CloseButtonText = t.T("episodes.addDialog.cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.XamlRoot,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            AppServices.Calibrations.Delete(ep.FullPath);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus(InfoBarSeverity.Error, ep.FileName, ex.Message);
+            return;
+        }
+
+        ep.CalibrationChapters.Clear();
+        ep.HasCalibration = false;
+        if (alsoDelete.IsChecked == true)
+        {
+            foreach (var f in partFiles)
+            {
+                try
+                {
+                    File.Delete(f);
+                    PartProbeCache.TryRemove(f.ToUpperInvariant(), out _);
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus(InfoBarSeverity.Error, f, ex.Message);
+                }
+            }
+        }
+        ChaptersPivot.SelectedIndex = 0;
+        UpdateTabButtons();
+        _ = EvaluatePartFilesAsync(ep);
+    }
+
     private ChapterItemViewModel CreateChapterVM(int number, string title, double start, double end, Series? series, IReadOnlyList<KeywordRule> keywords)
     {
         var cls = ChapterService.Classify(title, keywords);
@@ -470,6 +867,8 @@ public sealed partial class EpisodesPage : Page
         var cfg = await GetSelectedCodecConfigAsync();
         foreach (var c in Chapters())
             c.TargetLabel = BuildTargetLabel(c.Class, c.TargetKbps, c.Cq, cfg);
+        foreach (var c in CalibrationItems())
+            c.TargetLabel = BuildLevelTargetLabel(c.Calibration ?? CalibrationLevel.Normal, c.TargetKbps, c.Cq, cfg);
 
         await UpdateSizeEstimateAsync();
     }
@@ -525,12 +924,25 @@ public sealed partial class EpisodesPage : Page
 
     // ---------- edição de capítulos ----------
 
+    /// <summary>De qual grade o item faz parte (normal ou calibragem) — os ✎/✕ das duas
+    /// listas apontam para os mesmos handlers.</summary>
+    private ObservableCollection<ChapterItemViewModel>? FindOwningCollection(ChapterItemViewModel item)
+    {
+        if (ChaptersList.ItemsSource is ObservableCollection<ChapterItemViewModel> a && a.Contains(item))
+            return a;
+        if (CalibrationList.ItemsSource is ObservableCollection<ChapterItemViewModel> b && b.Contains(item))
+            return b;
+        return null;
+    }
+
     private async void RemoveChapter_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: ChapterItemViewModel item } ||
-            ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel> col ||
-            _selected is null)
+        if (sender is not FrameworkElement { Tag: ChapterItemViewModel item } || _selected is null)
             return;
+        var col = FindOwningCollection(item);
+        if (col is null)
+            return;
+        var isCalibration = ReferenceEquals(col, CalibrationList.ItemsSource);
 
         // capítulo com parte já encodeada no disco → excluir o arquivo junto (com
         // confirmação); os capítulos seguintes descem 1 número e suas partes renomeiam
@@ -557,8 +969,11 @@ public sealed partial class EpisodesPage : Page
         col.Remove(item);
         // a remoção também persiste: sem isso o capítulo removido ressuscitaria
         // ao reabrir o episódio (a grade salva vence os capítulos do vídeo)
-        RecomputeChapterEnds(_selected);
-        SaveChapterEdits(_selected);
+        RecomputeChapterEnds(_selected, [.. col]);
+        if (isCalibration)
+            SaveCalibration(_selected);
+        else
+            SaveChapterEdits(_selected);
 
         if (hadFile)
         {
@@ -584,12 +999,12 @@ public sealed partial class EpisodesPage : Page
 
     /// <summary>Recalcula o FIM de todos os capítulos da grade: o usuário só informa o início —
     /// o final é o início do próximo (na linha do tempo) e o do último é a duração do vídeo.</summary>
-    private void RecomputeChapterEnds(EpisodeViewModel? ep)
+    private void RecomputeChapterEnds(EpisodeViewModel? ep) =>
+        RecomputeChapterEnds(ep, Chapters().ToList());
+
+    private void RecomputeChapterEnds(EpisodeViewModel? ep, IReadOnlyList<ChapterItemViewModel> chapters)
     {
-        if (ep is null)
-            return;
-        var chapters = Chapters().ToList();
-        if (chapters.Count == 0)
+        if (ep is null || chapters.Count == 0)
             return;
 
         var duration = EffectiveDuration(ep);
@@ -620,7 +1035,9 @@ public sealed partial class EpisodesPage : Page
             return;
         var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
         var root = AppServices.GetOutputDirectory();
-        foreach (var c in ep.Chapters)
+        // avalia as DUAS grades: a de calibragem também tem partes na pasta (com os
+        // nomes dos níveis) e o usuário pode conferir ✓/✗ em qualquer aba
+        foreach (var c in ep.Chapters.Concat(ep.CalibrationChapters))
         {
             double? fileDuration = null;
             var path = JobPaths.PartPath(root, baseName, c.Number, c.Title);
@@ -706,11 +1123,14 @@ public sealed partial class EpisodesPage : Page
     /// <summary>Renomeia no disco as partes dos capítulos que mudaram de número/título
     /// (inserir no meio renumera os seguintes; editar posição/título também move o nome).
     /// Usa o plano de duas fases do PartRenames: sem colisão quando um destino é origem
-    /// de outro movimento. Arquivo ausente ou destino ocupado por estranho: pula.</summary>
-    private async Task SyncPartFileNamesAsync(EpisodeViewModel? ep, IReadOnlyList<ChapterSnapshot> before)
+    /// de outro movimento. Arquivo ausente ou destino ocupado por estranho: pula.
+    /// Serve para as DUAS grades — col = a coleção que mudou.</summary>
+    private async Task SyncPartFileNamesAsync(
+        EpisodeViewModel? ep, IReadOnlyList<ChapterSnapshot> before,
+        ObservableCollection<ChapterItemViewModel>? col = null)
     {
-        if (ep is null || before.Count == 0 ||
-            ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel> col)
+        col ??= ChaptersList.ItemsSource as ObservableCollection<ChapterItemViewModel>;
+        if (ep is null || col is null || before.Count == 0)
             return;
 
         var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
@@ -760,9 +1180,12 @@ public sealed partial class EpisodesPage : Page
 
     private async void EditChapter_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: ChapterItemViewModel item } ||
-            ChaptersList.ItemsSource is not ObservableCollection<ChapterItemViewModel> col)
+        if (sender is not FrameworkElement { Tag: ChapterItemViewModel item })
             return;
+        var col = FindOwningCollection(item);
+        if (col is null)
+            return;
+        var isCalibration = ReferenceEquals(col, CalibrationList.ItemsSource);
 
         var t = AppServices.Localizer;
         var cfg = await GetSelectedCodecConfigAsync();
@@ -842,7 +1265,7 @@ public sealed partial class EpisodesPage : Page
                 error.Visibility = Visibility.Visible;
                 return;
             }
-            var clash = Chapters().FirstOrDefault(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001);
+            var clash = col.FirstOrDefault(c => c != item && Math.Abs(c.StartSeconds - startSeconds) < 0.001);
             if (clash is not null)
             {
                 args.Cancel = true;
@@ -872,8 +1295,11 @@ public sealed partial class EpisodesPage : Page
                 Title = newTitle,
                 TimeRange = $"{FormatTime(startSeconds)} → …",
                 Class = item.Class,
+                Calibration = item.Calibration,
                 TargetKbps = kbpsValue,
-                TargetLabel = BuildTargetLabel(item.Class, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
+                TargetLabel = item.Calibration is { } lvl
+                    ? BuildLevelTargetLabel(lvl, kbpsValue, cqValue, await GetSelectedCodecConfigAsync())
+                    : BuildTargetLabel(item.Class, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
                 StartSeconds = startSeconds,
                 EndSeconds = duration,
                 Include = item.Include,
@@ -894,10 +1320,13 @@ public sealed partial class EpisodesPage : Page
                 }
             }
             col.Insert(insertAt, updated);
-            RecomputeChapterEnds(_selected);
-            SaveChapterEdits(_selected);
+            RecomputeChapterEnds(_selected, [.. col]);
+            if (isCalibration)
+                SaveCalibration(_selected);
+            else
+                SaveChapterEdits(_selected);
             // editar título/posição muda o NOME da parte — o arquivo acompanha
-            await SyncPartFileNamesAsync(_selected, before);
+            await SyncPartFileNamesAsync(_selected, before, col);
         };
 
         _ = dialog.ShowAsync();
@@ -1077,7 +1506,8 @@ public sealed partial class EpisodesPage : Page
 
     private async Task UpdateSizeEstimateAsync()
     {
-        var selected = Chapters().Where(c => c.Include).ToList();
+        // a estimativa segue a grade da aba ativa (Capítulos ou Calibragem)
+        var selected = ActiveChapters().Where(c => c.Include).ToList();
         var totalDuration = selected.Sum(c => Math.Max(0, c.EndSeconds - c.StartSeconds));
 
         var cfg = await GetSelectedCodecConfigAsync();
@@ -1166,7 +1596,22 @@ public sealed partial class EpisodesPage : Page
             // mais um arquivo final só com aquele pedaço.
             var baseName = Path.GetFileNameWithoutExtension(ep.FullPath);
             var reused = 0;
-            foreach (var c in ep.Chapters)
+
+            // Calibragem Automática definida para o episódio → os CORTES saem dos blocos
+            // de calibragem (todos temporários; kbps de cada nível) e a grade REGULAR vira
+            // o snapshot de capítulos do arquivo final. Sem calibragem, fluxo de sempre.
+            // A fonte é SEMPRE o store (calibracoes\): episódios marcados sem ter sido
+            // selecionados também têm a grade carregada.
+            var calibration = AppServices.Calibrations.Load(ep.FullPath);
+            var useCalibration = calibration is { Blocks.Count: > 0 };
+            if (useCalibration)
+            {
+                job.UseCalibration = true;
+                job.FinalChaptersJson = MergeService.BuildFinalChaptersJson(
+                    ep.Chapters.Select(c => new FinalChapter(c.Number, c.Title, c.StartSeconds)));
+            }
+
+            foreach (var c in await BuildEnqueuePartsAsync(ep, calibration))
             {
                 var partPath = JobPaths.PartPath(AppServices.GetOutputDirectory(), baseName, c.Number, c.Title);
                 var alreadyEncoded = !c.Include && File.Exists(partPath);
@@ -1213,6 +1658,42 @@ public sealed partial class EpisodesPage : Page
         ShowStatus(enqueued == 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success,
             enqueued == 0 ? t.T("episodes.nothingEnqueued") : t.T("queue.title"),
             EnqueueStatus.Text);
+    }
+
+    /// <summary>Parte a enfileirar — mesma forma para capítulo da grade normal e para bloco
+    /// de calibragem (o loop de criação de JobItem não distingue).</summary>
+    private sealed record EnqueuePart(
+        int Number, string Title, double StartSeconds, double EndSeconds, int TargetKbps,
+        bool Include, bool IsTemporary, int Preset, int Cq, BitrateClass Class);
+
+    /// <summary>Partes do episódio no enfileirar: COM calibragem salva, os blocos (todos
+    /// temporários — nunca viram capítulo no final; título = nome localizado do nível; alvo =
+    /// kbps do bloco, caindo para o valor corrente das settings quando o bloco não tem);
+    /// SEM calibragem, os capítulos da grade normal, como sempre.</summary>
+    private async Task<List<EnqueuePart>> BuildEnqueuePartsAsync(EpisodeViewModel ep, CalibrationData? calibration)
+    {
+        if (calibration is not { Blocks.Count: > 0 })
+            return [.. ep.Chapters.Select(c => new EnqueuePart(c.Number, c.Title, c.StartSeconds, c.EndSeconds,
+                c.TargetKbps, c.Include, c.IsTemporary, c.Preset, c.Cq, c.Class))];
+
+        var kbpsByLevel = await LoadCalibrationKbpsAsync();
+        var parts = new List<EnqueuePart>(calibration.Blocks.Count);
+        foreach (var b in calibration.Blocks)
+        {
+            var level = CalibrationStore.ParseLevel(b.Level);
+            parts.Add(new EnqueuePart(
+                b.Number,
+                LevelLabel(level),
+                b.StartSeconds,
+                b.EndSeconds,
+                b.TargetKbps > 0 ? b.TargetKbps : kbpsByLevel[(int)level] ?? 0,
+                b.Include,
+                IsTemporary: true,
+                b.Preset,
+                b.Cq,
+                BitrateClass.Episode));
+        }
+        return parts;
     }
 
     private static string FormatTime(double seconds)

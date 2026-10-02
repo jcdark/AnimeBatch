@@ -110,69 +110,139 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" x:Name="ChaptersHeader" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <!-- Só aparece quando o episódio tem grade editada salva (chapters-edits) -->
-                            <Button x:Name="BtnResetChapters" Click="BtnResetChapters_Click"
-                                    Visibility="Collapsed" HorizontalAlignment="Right" />
+                            <!-- Calibragem Automática: substitui o Resetar (que agora vive no menu ⋯) -->
+                            <Button x:Name="BtnCalibrate" Click="BtnCalibrate_Click"
+                                    Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Right" />
+                            <Button x:Name="BtnChaptersMenu" MinWidth="0" Padding="8,4" FontFamily="{ThemeResource SymbolThemeFontFamily}">
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem x:Name="MenuResetChapters" Click="BtnResetChapters_Click" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
                             <Button x:Name="BtnAddChapter" Click="BtnAddChapter_Click"
                                     HorizontalAlignment="Right" />
+                            <!-- Só na aba Calibragem -->
+                            <Button x:Name="BtnDeleteCalibration" Click="BtnDeleteCalibration_Click"
+                                    Visibility="Collapsed" HorizontalAlignment="Right" />
                         </StackPanel>
                     </Grid>
 
-                    <!-- Preenche a altura restante; o scroll interno só aparece quando precisa -->
-                    <ListView Grid.Row="4" x:Name="ChaptersList" SelectionMode="None"
-                              CanReorderItems="True" AllowDrop="True">
-                        <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ChapterItemViewModel">
-                            <Grid Padding="6" ColumnSpacing="8" Background="Transparent">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="30" />
-                                    <ColumnDefinition Width="3*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="150" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <CheckBox Grid.Column="0" MinWidth="0" IsChecked="{x:Bind Include, Mode=TwoWay}" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{x:Bind Number, Mode=OneWay}" VerticalAlignment="Center" FontWeight="SemiBold" />
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                    <TextBlock Text="temp" FontSize="10" Foreground="Orange"
-                                               VerticalAlignment="Center"
-                                               Visibility="{x:Bind TemporaryVisibility, Mode=OneWay}"
-                                               ToolTipService.ToolTip="Capítulo temporário: não vira capítulo no arquivo final" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="3" Text="{x:Bind TimeRange, Mode=OneWay}" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />
-                                <TextBlock Grid.Column="4" Text="{x:Bind TargetLabel, Mode=OneWay}" VerticalAlignment="Center" />
-                                <Button Grid.Column="5" MinWidth="0" Padding="6,2" Content="✎"
-                                        VerticalAlignment="Center" Click="EditChapter_Click" Tag="{x:Bind}"
-                                        ToolTipService.ToolTip="Editar capítulo" />
-                                <Button Grid.Column="6" MinWidth="0" Padding="6,2" Content="✕" Margin="4,0,0,0"
-                                        VerticalAlignment="Center" Click="RemoveChapter_Click" Tag="{x:Bind}"
-                                        ToolTipService.ToolTip="Remover capítulo" />
-                                <Grid Grid.Column="7" Width="22" VerticalAlignment="Center">
-                                    <!-- Parte já convertida na pasta: ✓ quando o tempo bate;
-                                         ✗ vermelho quando existe mas NÃO bate (clique remove) -->
-                                    <FontIcon Glyph="&#xE73E;" Foreground="#1E8E3E" FontSize="14"
-                                              VerticalAlignment="Center"
-                                              Visibility="{x:Bind OkVisibility, Mode=OneWay}"
-                                              ToolTipService.ToolTip="{x:Bind OkTooltip, Mode=OneWay}" />
-                                    <Button MinWidth="0" MinHeight="0" Padding="2" Background="Transparent"
-                                            BorderThickness="0" VerticalAlignment="Center"
-                                            Visibility="{x:Bind MismatchVisibility, Mode=OneWay}"
-                                            Click="RemovePartFile_Click" Tag="{x:Bind}"
-                                            ToolTipService.ToolTip="{x:Bind MismatchTooltip, Mode=OneWay}">
-                                        <Border Width="18" Height="18" CornerRadius="9" Background="#C5221F"
-                                                VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE711;" Foreground="White" FontSize="9" />
-                                        </Border>
-                                    </Button>
-                                </Grid>
-                            </Grid>
-                        </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                    <!-- Preenche a altura restante; o scroll interno só aparece quando precisa.
+                         Duas abas paralelas: Capítulos (grade normal, base do arquivo final) e
+                         Calibragem (blocos por criticidade — nunca viram capítulos no final). -->
+                    <Pivot Grid.Row="4" x:Name="ChaptersPivot" SelectionChanged="ChaptersPivot_SelectionChanged" Margin="-24,0,-24,0">
+                        <PivotItem x:Name="PivotChapters">
+                            <ListView x:Name="ChaptersList" SelectionMode="None"
+                                      CanReorderItems="True" AllowDrop="True">
+                                <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChapterItemViewModel">
+                                    <Grid Padding="6" ColumnSpacing="8" Background="Transparent">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="3*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" MinWidth="0" IsChecked="{x:Bind Include, Mode=TwoWay}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind Number, Mode=OneWay}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Text="temp" FontSize="10" Foreground="Orange"
+                                                       VerticalAlignment="Center"
+                                                       Visibility="{x:Bind TemporaryVisibility, Mode=OneWay}"
+                                                       ToolTipService.ToolTip="Capítulo temporário: não vira capítulo no arquivo final" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{x:Bind TimeRange, Mode=OneWay}" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />
+                                        <TextBlock Grid.Column="4" Text="{x:Bind TargetLabel, Mode=OneWay}" VerticalAlignment="Center" />
+                                        <Button Grid.Column="5" MinWidth="0" Padding="6,2" Content="✎"
+                                                VerticalAlignment="Center" Click="EditChapter_Click" Tag="{x:Bind}"
+                                                ToolTipService.ToolTip="Editar capítulo" />
+                                        <Button Grid.Column="6" MinWidth="0" Padding="6,2" Content="✕" Margin="4,0,0,0"
+                                                VerticalAlignment="Center" Click="RemoveChapter_Click" Tag="{x:Bind}"
+                                                ToolTipService.ToolTip="Remover capítulo" />
+                                        <Grid Grid.Column="7" Width="22" VerticalAlignment="Center">
+                                            <!-- Parte já convertida na pasta: ✓ quando o tempo bate;
+                                                 ✗ vermelho quando existe mas NÃO bate (clique remove) -->
+                                            <FontIcon Glyph="&#xE73E;" Foreground="#1E8E3E" FontSize="14"
+                                                      VerticalAlignment="Center"
+                                                      Visibility="{x:Bind OkVisibility, Mode=OneWay}"
+                                                      ToolTipService.ToolTip="{x:Bind OkTooltip, Mode=OneWay}" />
+                                            <Button MinWidth="0" MinHeight="0" Padding="2" Background="Transparent"
+                                                    BorderThickness="0" VerticalAlignment="Center"
+                                                    Visibility="{x:Bind MismatchVisibility, Mode=OneWay}"
+                                                    Click="RemovePartFile_Click" Tag="{x:Bind}"
+                                                    ToolTipService.ToolTip="{x:Bind MismatchTooltip, Mode=OneWay}">
+                                                <Border Width="18" Height="18" CornerRadius="9" Background="#C5221F"
+                                                        VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xE711;" Foreground="White" FontSize="9" />
+                                                </Border>
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </PivotItem>
+                        <PivotItem x:Name="PivotCalibration" IsEnabled="False">
+                            <!-- Mesma grade, mesma template: os blocos da calibragem se comportam
+                                 como os capítulos (checkbox/✎/✕/✓✗) — só nascem da análise -->
+                            <ListView x:Name="CalibrationList" SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ChapterItemViewModel">
+                                    <Grid Padding="6" ColumnSpacing="8" Background="Transparent">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="3*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0" MinWidth="0" IsChecked="{x:Bind Include, Mode=TwoWay}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind Number, Mode=OneWay}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                            <TextBlock Text="CA" FontSize="10" Foreground="Orange"
+                                                       VerticalAlignment="Center"
+                                                       ToolTipService.ToolTip="Bloco da Calibragem Automática: nunca vira capítulo no arquivo final" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{x:Bind TimeRange, Mode=OneWay}" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />
+                                        <TextBlock Grid.Column="4" Text="{x:Bind TargetLabel, Mode=OneWay}" VerticalAlignment="Center" />
+                                        <Button Grid.Column="5" MinWidth="0" Padding="6,2" Content="✎"
+                                                VerticalAlignment="Center" Click="EditChapter_Click" Tag="{x:Bind}"
+                                                ToolTipService.ToolTip="Editar capítulo" />
+                                        <Button Grid.Column="6" MinWidth="0" Padding="6,2" Content="✕" Margin="4,0,0,0"
+                                                VerticalAlignment="Center" Click="RemoveChapter_Click" Tag="{x:Bind}"
+                                                ToolTipService.ToolTip="Remover capítulo" />
+                                        <Grid Grid.Column="7" Width="22" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE73E;" Foreground="#1E8E3E" FontSize="14"
+                                                      VerticalAlignment="Center"
+                                                      Visibility="{x:Bind OkVisibility, Mode=OneWay}"
+                                                      ToolTipService.ToolTip="{x:Bind OkTooltip, Mode=OneWay}" />
+                                            <Button MinWidth="0" MinHeight="0" Padding="2" Background="Transparent"
+                                                    BorderThickness="0" VerticalAlignment="Center"
+                                                    Visibility="{x:Bind MismatchVisibility, Mode=OneWay}"
+                                                    Click="RemovePartFile_Click" Tag="{x:Bind}"
+                                                    ToolTipService.ToolTip="{x:Bind MismatchTooltip, Mode=OneWay}">
+                                                <Border Width="18" Height="18" CornerRadius="9" Background="#C5221F"
+                                                        VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xE711;" Foreground="White" FontSize="9" />
+                                                </Border>
+                                            </Button>
+                                        </Grid>
+                                    </Grid>
+                                </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </PivotItem>
+                    </Pivot>
                 </Grid>
 
                 <!-- Rodapé da seção: sempre visível -->

@@ -40,6 +40,15 @@ public class Job
     /// <summary>Codec do encode: "svt_av1", "svt_av1_10bit", "nvenc_av1" ou "nvenc_av1_10bit" (VideoCodecOptions).</summary>
     public string? VideoCodec { get; set; }
 
+    /// <summary>Job enfileirado com Calibragem Automática: os cortes/parts vêm dos blocos de
+    /// calibragem (todos temporários) e a row da fila mostra o sufixo " [CA]".</summary>
+    public bool UseCalibration { get; set; }
+
+    /// <summary>Snapshot da grade de capítulos REGULAR no enfileiramento com calibragem
+    /// ([{número,título,início}]) — é DELE que sai o chapters.txt do arquivo final (os blocos
+    /// de calibragem nunca viram capítulos no vídeo).</summary>
+    public string? FinalChaptersJson { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public List<JobItem> Items { get; set; } = new();

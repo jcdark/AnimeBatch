@@ -123,9 +123,10 @@ campos:
 - **Excluir um capítulo**: além de tirar da grade, **apaga o arquivo da parte**
   correspondente na pasta (com confirmação) — você mudou de estratégia, então
   o arquivo antigo não serve mais.
-- **Resetar Capítulos**: apaga a grade editada e volta aos capítulos do
-  `.mkv` (ou ao capítulo único, se o arquivo não tinha); as partes que
-  **sobrarem sem dono** na pasta são oferecidas para remoção.
+- **Resetar Capítulos** (menu "⋯" ao lado do botão de calibrar): apaga a grade
+  editada e volta aos capítulos do `.mkv` (ou ao capítulo único, se o arquivo
+  não tinha); as partes que **sobrarem sem dono** na pasta são oferecidas para
+  remoção.
 
 ### Converter só um capítulo
 
@@ -133,6 +134,40 @@ Com a grade preenchida, desmarque as caixas e deixe marcado **apenas o
 capítulo desejado**: só aquela parte é encodeada. Útil para refazer um
 capítulo que ficou com bitrate baixo — na junção, as partes com bitrates
 diferentes são unidas no arquivo final normalmente.
+
+## Calibragem Automática
+
+O botão **Calibragem Automática** (ao lado de "+ Adicionar capítulo") cria,
+para o episódio selecionado, uma **grade paralela de blocos por
+criticidade de bitrate** — sem mexer nos capítulos normais.
+
+**Como funciona:** o app roda uma **encode de análise** do vídeo inteiro
+(SVT 1-pass @ 1000 kbps, preset rápido) e mede, em janelas de 5 segundos,
+quantos bits cada trecho realmente consumiu. Do trecho que **menos** consumiu
+ao que **mais** consumiu, o intervalo é dividido em 5 faixas iguais — a média
+de mais alto e mais baixo é o centro da faixa *Normal* — e janelas vizinhas
+do mesmo nível são mescladas em blocos: **Muito Baixo, Baixo, Normal, Alto e
+Muito Alto** (esses são os nomes dos blocos).
+
+**Onde aparece:** o painel do episódio ganha uma segunda aba, **Calibragem**,
+idêntica à de Capítulos — checkbox de conversão, número, tempos, ✎
+configurar, ✖ excluir e o ✓/✗ de parte conferida/diferente. Ao calibrar, o
+app vai direto para ela; nela existe o botão **Excluir Calibragem**, que apaga
+a calibragem (e, se você quiser, as partes já convertidas dela) e devolve o
+episódio ao uso dos capítulos normais.
+
+**Regras importantes:**
+
+- Os blocos de calibragem **NUNCA viram capítulos no arquivo final** —
+  funcionam como capítulos temporários (parte encodeada, marcador não).
+- O **bitrate de cada bloco** vem dos valores definidos em
+  *Configurações → Calibragem Automática* (um total de kbps por nível).
+  Sem esses valores salvos, o botão de calibrar é bloqueado com a mensagem
+  pedindo para defini-los.
+- Ao **Enfileirar selecionados**, um episódio com calibragem é convertido
+  **pelos cortes dos blocos de calibragem** — e a grade normal segue como os
+  capítulos do arquivo final, como sempre.
+- Na **Fila**, esses jobs recebem o sufixo **[CA]** no nome do arquivo.
 
 ## Enfileirando
 

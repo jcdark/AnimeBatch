@@ -42,6 +42,17 @@ No motor ncnn os índices são Vulkan; no ONNX são DXGI/DirectML — a lista
 [Hardware (GPU)](05-hardware.md) estiver configurada, **ela tem precedência**
 sobre este campo.
 
+## Calibragem Automática
+
+A calibragem automática **analisa o vídeo** (uma encode de referência em 1
+passada) e **mede quanto bitrate cada cena realmente consome** — de Muito
+Baixo a Muito Alto — para dividir o episódio em blocos por criticidade e dar
+a cada bloco o bitrate do seu nível. Nesta seção você define o **total de
+kbps de cada nível** (Muito Baixo, Baixo, Normal, Alto, Muito Alto) e clica
+em **Salvar**. Enquanto os cinco valores não estiverem salvos, o botão de
+calibrar na tela [Episódios](03-episodios.md) fica bloqueado. Sugestões de
+partida: 300 / 600 / 1000 / 1600 / 2400 kbps.
+
 ## Base de dados
 
 Mostra onde o banco vive (`%LOCALAPPDATA%\AnimeBatch\animebatch.db`) e o

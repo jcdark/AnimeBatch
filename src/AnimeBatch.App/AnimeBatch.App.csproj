@@ -6,7 +6,7 @@
          precisam casar com o nome do exe, então a versão entra no AssemblyName,
          não numa renomeação pós-publish. Version PRECISA vir antes do AssemblyName. -->
     <!-- Version curto (0.3) → exe AnimeBatchV0.28.exe. Nas próximas versões, subir aqui. -->
-    <Version>0.61</Version>
+    <Version>0.62</Version>
     <AssemblyName>AnimeBatchV$(Version)</AssemblyName>
     <!-- O pacote ONNX Runtime DirectML entrega o mesmo DirectML.dll por dois caminhos
          (NuGet nativo e MsixContent do WinUI); é o MESMO binário, então deixa passar. -->

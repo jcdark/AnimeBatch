@@ -27,6 +27,13 @@ public class SettingsRepository(Func<AnimeBatchDbContext> contextFactory)
     /// <summary>QC de qualidade opcional: mede VMAF/SSIM/PSNR (libvmaf) de cada parte contra a
     /// origem após o encode e grava no item. "true" = ligada; ausente = desligada (default).</summary>
     public const string QueueQualityCheck = "queue.qualityCheck";
+    /// <summary>Bitrates (kbps) da Calibragem Automática por nível de criticidade. Ausente/vazio/≤0
+    /// em QUALQUER uma = calibragem bloqueada até o dono definir os valores na tela de Configurações.</summary>
+    public const string CalibrationVeryLowKbps = "calibracao.muitoBaixo";
+    public const string CalibrationLowKbps = "calibracao.baixo";
+    public const string CalibrationNormalKbps = "calibracao.normal";
+    public const string CalibrationHighKbps = "calibracao.alto";
+    public const string CalibrationVeryHighKbps = "calibracao.muitoAlto";
 
     private readonly Func<AnimeBatchDbContext> _factory = contextFactory;
 

@@ -1,8 +1,14 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 
 namespace AnimeBatch.Core.Services;
+
+/// <summary>Capítulo do snapshot da grade REGULAR, gravado no job quando ele é enfileirado com
+/// Calibragem Automática (Job.FinalChaptersJson): os cortes/parts vêm dos blocos de calibragem,
+/// mas os marcadores de capítulo do arquivo final continuam saindo desta grade.</summary>
+public record FinalChapter(int Number, string Title, double StartSeconds);
 
 /// <summary>
 /// Concatena as partes com mkvmerge na ordem informada e gera o arquivo de capítulos
@@ -40,15 +46,67 @@ public class MergeService : Queueing.IMergeStage
         return sb.ToString();
     }
 
+    /// <summary>Serializa o snapshot de capítulos finais gravado no Job (formato compacto e
+    /// estável — número, título e início na linha do tempo da ORIGEM, que é a mesma do final
+    /// porque os blocos de calibragem cobrem o vídeo inteiro em ordem).</summary>
+    public static string BuildFinalChaptersJson(IEnumerable<FinalChapter> chapters) =>
+        JsonSerializer.Serialize(chapters.Select(c => new { n = c.Number, t = c.Title, s = c.StartSeconds }));
+
+    /// <summary>Lê o snapshot gravado no Job; null/inválido → null (o merge cai no
+    /// comportamento padrão, que com calibragem resulta em arquivo sem entradas de capítulo).</summary>
+    public static List<FinalChapter>? ParseFinalChapters(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return null;
+            var list = new List<FinalChapter>();
+            foreach (var c in doc.RootElement.EnumerateArray())
+            {
+                list.Add(new FinalChapter(
+                    c.TryGetProperty("n", out var n) && n.TryGetInt32(out var nv) ? nv : 0,
+                    c.TryGetProperty("t", out var t) ? t.GetString() ?? "" : "",
+                    c.TryGetProperty("s", out var s) && s.TryGetDouble(out var sv) ? sv : 0));
+            }
+            return list;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Capítulos a partir do snapshot: os tempos JÁ são absolutos na linha do tempo do
+    /// vídeo (não cumulativos como em BuildChaptersTxt).</summary>
+    public static string BuildFinalChaptersTxt(IEnumerable<FinalChapter> chapters)
+    {
+        var sb = new StringBuilder();
+        var number = 1;
+        foreach (var c in chapters.OrderBy(c => c.StartSeconds))
+        {
+            var ts = TimeSpan.FromSeconds(Math.Max(0, c.StartSeconds));
+            sb.AppendLine($"CHAPTER{number:00}={ts:hh\\:mm\\:ss\\.fff}");
+            sb.AppendLine($"CHAPTER{number:00}NAME={c.Title}");
+            number++;
+        }
+        return sb.ToString();
+    }
+
     public async Task MergeAsync(
         IReadOnlyList<(string PartPath, string Title, double StartSeconds, double EndSeconds, bool IsCritical)> parts,
         string finalPath,
         string chaptersPath,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? chaptersTxtOverride = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
 
-        var chaptersTxt = BuildChaptersTxt(parts.Select(p => (p.Title, p.StartSeconds, p.EndSeconds, p.IsCritical)));
+        // Override = snapshot dos capítulos regulares (jobs com Calibragem Automática: TODAS as
+        // partes são temporárias e o BuildChaptersTxt das partes viria vazio).
+        var chaptersTxt = chaptersTxtOverride ?? BuildChaptersTxt(parts.Select(p => (p.Title, p.StartSeconds, p.EndSeconds, p.IsCritical)));
         if (chaptersTxt.Trim().Length > 0)
             await File.WriteAllTextAsync(chaptersPath, chaptersTxt, ct).ConfigureAwait(false);
 

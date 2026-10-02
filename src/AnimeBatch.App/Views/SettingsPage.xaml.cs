@@ -99,6 +99,23 @@ public sealed partial class SettingsPage : Page
         SourceDirBox.Text = await AppServices.GetSourceDirectoryAsync() ?? "";
         OutDirBox.Text = await AppServices.GetOutputDirectoryAsync();
         UpscaleGpusBox.Text = await AppServices.Settings.GetAsync(SettingsRepository.UpscaleGpus) ?? "";
+
+        // Calibragem Automática: bitrates por nível (vazio = ainda não definidos —
+        // a calibragem na tela de Episódios fica bloqueada até salvar aqui)
+        var keys = new[]
+        {
+            (NumCalVeryLow, SettingsRepository.CalibrationVeryLowKbps, "300"),
+            (NumCalLow, SettingsRepository.CalibrationLowKbps, "600"),
+            (NumCalNormal, SettingsRepository.CalibrationNormalKbps, "1000"),
+            (NumCalHigh, SettingsRepository.CalibrationHighKbps, "1600"),
+            (NumCalVeryHigh, SettingsRepository.CalibrationVeryHighKbps, "2400"),
+        };
+        foreach (var (box, settingKey, placeholder) in keys)
+        {
+            var raw = await AppServices.Settings.GetAsync(settingKey);
+            box.Value = double.TryParse(raw, out var v) ? v : double.NaN;
+            box.PlaceholderText = placeholder;
+        }
     }
 
     /// <summary>Detecta as GPUs em segundo plano e mostra o resultado nas DUAS numerações:
@@ -185,6 +202,15 @@ public sealed partial class SettingsPage : Page
         UpscaleGpusBox.Header = t.T("settings.upscaleGpus");
         UpscaleGpusBox.PlaceholderText = "auto";
         UpscaleGpusHint.Text = t.T("settings.upscaleGpusHint");
+        CalibrationHeader.Text = t.T("settings.calibrationHeader");
+        CalibrationExplanation.Text = t.T("settings.calibrationExplanation");
+        NumCalVeryLow.Header = t.T("calib.level.veryLow");
+        NumCalLow.Header = t.T("calib.level.low");
+        NumCalNormal.Header = t.T("calib.level.normal");
+        NumCalHigh.Header = t.T("calib.level.high");
+        NumCalVeryHigh.Header = t.T("calib.level.veryHigh");
+        BtnSaveCalibration.Content = t.T("settings.calibrationSave");
+        CalibrationHint.Text = "";
         DatabaseHeader.Text = t.T("settings.database");
         BtnClearDb.Content = t.T("settings.dbClear");
         DbClearHint.Text = t.T("settings.dbClearHint");
@@ -223,6 +249,27 @@ public sealed partial class SettingsPage : Page
         TmdbKeyStatus.Text = string.IsNullOrEmpty(key)
             ? t.T("settings.tmdbKeyRemoved")
             : t.T("settings.tmdbKeySaved");
+    }
+
+    /// <summary>Salva os 5 bitrates da Calibragem Automática (um por nível de criticidade).
+    /// Valores vazios/zerados = nível não configurado — a calibragem é bloqueada na Episódios.</summary>
+    private async void BtnSaveCalibration_Click(object sender, RoutedEventArgs e)
+    {
+        var t = AppServices.Localizer;
+        var pairs = new (Microsoft.UI.Xaml.Controls.NumberBox Box, string Key)[]
+        {
+            (NumCalVeryLow, SettingsRepository.CalibrationVeryLowKbps),
+            (NumCalLow, SettingsRepository.CalibrationLowKbps),
+            (NumCalNormal, SettingsRepository.CalibrationNormalKbps),
+            (NumCalHigh, SettingsRepository.CalibrationHighKbps),
+            (NumCalVeryHigh, SettingsRepository.CalibrationVeryHighKbps),
+        };
+        foreach (var (box, key) in pairs)
+        {
+            var value = double.IsNaN(box.Value) || box.Value <= 0 ? "" : ((int)box.Value).ToString();
+            await AppServices.Settings.SetAsync(key, value);
+        }
+        CalibrationHint.Text = t.T("settings.saved");
     }
 
     private async void CmbLanguage_SelectionChanged(object sender, SelectionChangedEventArgs e)

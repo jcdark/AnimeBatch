@@ -237,6 +237,27 @@
         "encodes.scenecut": "Detecção de cenas",
         "encodes.scenecutPrecise": "Precisa (resolução cheia)",
         "encodes.scenecutFast": "Rápida (análise em 720p) — recomendado",
-        "encodes.scenecutMax": "Máxima velocidade (360p + método rápido)"
+        "encodes.scenecutMax": "Máxima velocidade (360p + método rápido)",
+        "episodes.calibrate": "Calibragem Automática",
+        "episodes.calibrationTab": "Calibragem",
+        "episodes.deleteCalibration": "Excluir Calibragem",
+        "episodes.deleteCalibrationMsg": "Excluir a calibragem deste episódio? O sistema volta a usar os capítulos normais nos enfileiramentos.",
+        "episodes.deleteCalibrationFiles": "Também remover as {0} parte(s) já convertida(s) da calibragem na pasta",
+        "episodes.calibrateTitle": "Calibragem Automática — {0}",
+        "episodes.calibrateHint": "Analisando o vídeo com uma encode de referência (SVT 1-pass @ {0} kbps) para medir quanto cada trecho consome de bitrate. Isso pode levar alguns minutos.",
+        "episodes.calibratePhaseEncode": "encode de análise…",
+        "episodes.calibratePhaseMeasure": "medindo blocos por criticidade…",
+        "episodes.calibrateCancel": "Cancelar",
+        "episodes.calibrateMissing": "⚠ Defina os bitrates de cada nível (Muito Baixo, Baixo, Normal, Alto, Muito Alto) em Configurações → Calibragem Automática antes de calibrar.",
+        "episodes.calibrateFailed": "Não foi possível analisar o vídeo (duração indisponível).",
+        "episodes.calibrateDone": "✓ Calibragem criada: {0} blocos (consumo medido entre {1} e {2} kbps). Os blocos NUNCA viram capítulos no arquivo final — ao enfileirar, eles definem os cortes e os capítulos normais seguem no vídeo.",
+        "calib.level.veryLow": "Muito Baixo",
+        "calib.level.low": "Baixo",
+        "calib.level.normal": "Normal",
+        "calib.level.high": "Alto",
+        "calib.level.veryHigh": "Muito Alto",
+        "settings.calibrationHeader": "Calibragem Automática",
+        "settings.calibrationExplanation": "A calibragem automática analisa o vídeo (encode de referência em 1 passada) e mede quanto bitrate cada cena realmente consome — de Muito Baixo a Muito Alto. Defina aqui o total de kbps de cada nível: ao calibrar, o vídeo é dividido em blocos por criticidade e cada bloco recebe o bitrate do seu nível. Os blocos nunca viram capítulos no arquivo final.",
+        "settings.calibrationSave": "Salvar"
     }
 }

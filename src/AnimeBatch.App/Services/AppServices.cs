@@ -22,6 +22,7 @@ internal static class AppServices
     public static ProbeService? Probe { get; private set; }
     public static ChapterService Chapters { get; } = new();
     public static ChapterEditsStore ChapterEdits { get; } = new();
+    public static CalibrationStore Calibrations { get; } = new();
 
     /// <summary>Append de exceções não tratadas em data\crash.log (pasta do app).</summary>
     public static void LogCrash(string source, Exception ex)

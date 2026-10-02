@@ -123,9 +123,10 @@ the grid. The other fields:
 - **Deleting a chapter**: besides removing it from the grid, it **deletes the
   corresponding part file** in the folder (with confirmation) — you changed
   your strategy, so the old file is no longer useful.
-- **Reset chapters**: wipes the edited grid and goes back to the `.mkv`
-  chapters (or the single chapter, if the file had none); parts left
-  **orphaned** in the folder are offered for removal.
+- **Reset chapters** (the "⋯" menu next to the calibrate button): wipes the
+  edited grid and goes back to the `.mkv` chapters (or the single chapter, if
+  the file had none); parts left **orphaned** in the folder are offered for
+  removal.
 
 ### Converting a single chapter
 
@@ -133,6 +134,40 @@ With the grid filled in, uncheck the boxes and leave **only the chapter you
 want** checked: just that part gets encoded. Useful for redoing a chapter
 whose bitrate came out too low — at the merge, parts with different bitrates
 are joined into the final file normally.
+
+## Automatic calibration
+
+The **Automatic calibration** button (next to "+ Add chapter") creates, for
+the selected episode, a **parallel grid of blocks by bitrate criticality** —
+without touching the regular chapters.
+
+**How it works:** the app runs an **analysis encode** of the whole video
+(SVT 1-pass @ 1000 kbps, fast preset) and measures, in 5-second windows, how
+many bits each stretch actually consumed. From the **lowest**-consuming
+stretch to the **highest** one, the interval is split into 5 equal bands —
+the average of the highest and lowest is the center of the *Normal* band —
+and neighboring windows of the same level are merged into blocks:
+**Very Low, Low, Normal, High and Very High** (those are the block names).
+
+**Where it shows up:** the episode panel gains a second tab, **Calibration**,
+identical to Chapters — conversion check box, number, times, ✎ edit, ✖
+delete and the ✓/✗ matched/mismatched part marks. Calibrating takes you
+straight to it; it holds the **Delete calibration** button, which wipes the
+calibration (and, if you want, its already-converted parts) and puts the
+episode back on the regular chapters.
+
+**Important rules:**
+
+- Calibration blocks **NEVER become chapters in the final file** — they
+  behave like temporary chapters (encoded as a part, no chapter marker).
+- **Each block's bitrate** comes from the values set in *Settings →
+  Automatic calibration* (one kbps total per level). Without those values
+  saved, the calibrate button is blocked with a message asking you to set
+  them.
+- When **Enqueueing selected**, an episode with calibration is converted
+  **using the calibration blocks as the cuts** — and the regular grid stays
+  as the final file's chapter markers, as always.
+- On the **Queue**, those jobs get the **[CA]** suffix on the file name.
 
 ## Enqueueing
 

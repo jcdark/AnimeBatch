@@ -23,12 +23,22 @@ public partial class EpisodeViewModel : ObservableObject
     public partial string Info { get; set; } = "";
 
     /// <summary>Este episódio tem grade editada salva (arquivo em chapters-edits) —
-    /// mostra o botão "Resetar Capítulos".</summary>
+    /// o "Resetar Capítulos" do menu ⋯ fica habilitado.</summary>
     [ObservableProperty]
     public partial bool HasChapterEdits { get; set; }
 
+    /// <summary>Este episódio tem Calibragem Automática salva (arquivo em calibracoes) —
+    /// habilita a aba Calibragem e faz o enfileirar usar os cortes da calibragem.</summary>
+    [ObservableProperty]
+    public partial bool HasCalibration { get; set; }
+
     [ObservableProperty]
     public partial System.Collections.ObjectModel.ObservableCollection<ChapterItemViewModel> Chapters { get; set; } = new();
+
+    /// <summary>Grade PARALELA da Calibragem Automática — blocos por criticidade de bitrate.
+    /// Nunca vira capítulo no arquivo final; ao enfileirar com calibragem, são os cortes usados.</summary>
+    [ObservableProperty]
+    public partial System.Collections.ObjectModel.ObservableCollection<ChapterItemViewModel> CalibrationChapters { get; set; } = new();
 
     public EpisodeViewModel(string fullPath)
     {
@@ -64,6 +74,11 @@ public partial class ChapterItemViewModel : ObservableObject
     public BitrateClass Class { get; init; }
     public int TargetKbps { get; init; }
     public double StartSeconds { get; init; }
+
+    /// <summary>Nível da Calibragem Automática deste bloco (null nos capítulos da grade normal).
+    /// O TÍTULO do bloco é o nome localizado do nível, mas o nível gravado no JSON é este —
+    /// trocar o idioma não quebra a persistência.</summary>
+    public CalibrationLevel? Calibration { get; init; }
 
     /// <summary>Final derivado (início do próximo capítulo / fim do vídeo) — muda quando a
     /// grade é editada; binding OneWay na grade de capítulos.</summary>

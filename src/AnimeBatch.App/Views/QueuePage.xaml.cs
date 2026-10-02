@@ -27,7 +27,11 @@ public partial class JobRowViewModel : ObservableObject
     public partial double? ProgressPercent { get; set; }
 
     public int Id => Job.Id;
-    public string SourceFileName => System.IO.Path.GetFileName(Job.SourcePath);
+
+    /// <summary>Nome do arquivo na row; job enfileirado com Calibragem Automática ganha o
+    /// sufixo " [CA]" (os cortes saem dos blocos de calibragem, não dos capítulos).</summary>
+    public string SourceFileName =>
+        System.IO.Path.GetFileName(Job.SourcePath) + (Job.UseCalibration ? " [CA]" : "");
 
     /// <summary>Motivo do erro (visível na row quando o job está em Error).</summary>
     public string ErrorLabel => Job.ErrorMessage ?? "";

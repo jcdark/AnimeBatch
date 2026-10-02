@@ -13,4 +13,7 @@ public static class AppDataPaths
     public static string DbPath => Path.Combine(Root, "animebatch.db");
 
     public static string ChaptersEditsDir => Path.Combine(Root, "chapters-edits");
+
+    /// <summary>Grades de capítulos da Calibragem Automática (calibracoes\), ao lado do banco.</summary>
+    public static string CalibrationsDir => Path.Combine(Root, "calibracoes");
 }

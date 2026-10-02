@@ -172,6 +172,52 @@ public class QueueRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task Job_com_calibragem_monta_capitulos_do_snapshot_da_grade_regular()
+    {
+        // Calibragem Automática: TODAS as partes são temporárias (sozinhas gerariam zero
+        // entradas) — os capítulos do arquivo final vêm do snapshot da grade REGULAR
+        // gravado no enfileiramento (Job.FinalChaptersJson).
+        var job = NewJob("ep_ca.mkv");
+        job.UseCalibration = true;
+        job.FinalChaptersJson = MergeService.BuildFinalChaptersJson(
+        [
+            new FinalChapter(1, "Episode", 0),
+            new FinalChapter(2, "Opening", 55.93),
+            new FinalChapter(3, "Episode", 145.93),
+        ]);
+        job.Items.Clear();
+        job.Items.Add(new JobItem
+        {
+            Order = 1, Title = "Normal", StartSeconds = 0, EndSeconds = 60,
+            Class = BitrateClass.Episode, TargetKbps = 300, IsTemporary = true,
+        });
+        job.Items.Add(new JobItem
+        {
+            Order = 2, Title = "Muito Alto", StartSeconds = 60, EndSeconds = 120,
+            Class = BitrateClass.Episode, TargetKbps = 2400, IsTemporary = true,
+        });
+        await _jobs.AddAsync(job);
+
+        var merge = new FakeMerge();
+        var runner = NewRunner(new FakeEncode(), merge);
+        await runner.RunAsync();
+
+        Assert.Equal(1, merge.MergeCalls);
+        Assert.NotNull(merge.LastChaptersOverride);
+        var txt = merge.LastChaptersOverride!;
+        Assert.Contains("CHAPTER01NAME=Episode", txt);
+        Assert.Contains("CHAPTER02NAME=Opening", txt);
+        Assert.Contains("CHAPTER03NAME=Episode", txt);
+        // blocos de calibragem NUNCA viram capítulo — nem o título dos níveis aparece
+        Assert.DoesNotContain("Normal", txt);
+        Assert.DoesNotContain("Muito Alto", txt);
+
+        var done = (await _jobs.GetAllOrderedAsync()).Single();
+        Assert.Equal(JobState.Done, done.State);
+        Assert.All(done.Items, i => Assert.Equal(JobItemState.Done, i.State));
+    }
+
+    [Fact]
     public async Task Capitulo_temporario_entra_no_video_mas_nao_vira_capitulo()
     {
         // "Capítulo temporário": encodeia como parte (conteúdo entra no final) mas NÃO
@@ -724,13 +770,16 @@ public class QueueRunnerTests : IDisposable
         public int MergeCalls;
         /// <summary>Partes do último merge com a flag de "não vira capítulo" (Critical/temporário).</summary>
         public List<(string PartPath, bool IsCritical)> LastParts = [];
+        /// <summary>Override de chapters.txt (jobs com Calibragem Automática), se veio.</summary>
+        public string? LastChaptersOverride;
 
         public Task MergeAsync(
             IReadOnlyList<(string PartPath, string Title, double StartSeconds, double EndSeconds, bool IsCritical)> parts,
-            string finalPath, string chaptersPath, CancellationToken ct)
+            string finalPath, string chaptersPath, CancellationToken ct, string? chaptersTxtOverride = null)
         {
             MergeCalls++;
             LastParts = [.. parts.Select(p => (p.PartPath, p.IsCritical))];
+            LastChaptersOverride = chaptersTxtOverride;
             File.WriteAllText(finalPath, "merge fake");
             return Task.CompletedTask;
         }
