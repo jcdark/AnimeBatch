@@ -244,7 +244,7 @@
         "episodes.deleteCalibrationMsg": "Delete the calibration for this episode? The system goes back to using the regular chapters when enqueueing.",
         "episodes.deleteCalibrationFiles": "Also remove the {0} already-converted calibration part(s) in the folder",
         "episodes.calibrateTitle": "Automatic calibration — {0}",
-        "episodes.calibrateHint": "Analyzing the video with a reference encode (SVT 1-pass @ {0} kbps) to measure how much bitrate each stretch consumes. This can take a few minutes.",
+        "episodes.calibrateHint": "Analyzing the video with a reference encode (SVT 1-pass @ {0} kbps) to measure how much bitrate each stretch consumes. That value belongs to the ANALYSIS only — the conversion uses each block's level bitrate. This can take a few minutes.",
         "episodes.calibratePhaseEncode": "analysis encode…",
         "episodes.calibratePhaseMeasure": "measuring blocks by criticality…",
         "episodes.calibrateCancel": "Cancel",

@@ -515,6 +515,12 @@ public class QueueRunner
 
             // Com upscale, o intermediário contém SÓ a parte → corte relativo começa em 0
             var itemCfg = EffectiveCfg(cfg, item);
+            // Em job com Calibragem Automática o alvo leva o NÍVEL junto ("600 kbps · Baixo"):
+            // cada bloco tem o bitrate do seu nível — sem o nível no rodapé, um bloco "Normal"
+            // (ex.: 1000 kbps) parece o valor fixo da análise vazando na conversão.
+            var rate = RateFor(itemCfg, item);
+            if (job.UseCalibration)
+                rate = $"{rate} · {item.Title}";
             pending.Add(new PendingEncode(
                 item, outPath, upscaledIntermediates ? intermediatePath : null,
                 upscaledIntermediates ? intermediatePath : job.SourcePath,
@@ -524,7 +530,7 @@ public class QueueRunner
                 Path.Combine(workDir, $"pass_{item.Order:00}"),
                 itemDuration,
                 itemCfg,
-                RateFor(itemCfg, item)));
+                rate));
         }
 
         // ---- Fase 2: encode das partes pendentes ----
