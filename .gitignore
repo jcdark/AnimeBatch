@@ -32,3 +32,7 @@ lab/clips/
 lab/tmp/
 lab/dataset/
 lab/clips.local.json
+
+# Instrucoes locais de agente (nao publicar)
+AGENTS.md
+.zcodeignore
