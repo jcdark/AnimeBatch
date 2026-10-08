@@ -80,4 +80,6 @@ O AnimeBatch se apoia nessas ferramentas, embarcadas em todo release e creditada
 
 ---
 
-Projeto privado — todos os direitos reservados.
+## Licença & Apoio
+
+O AnimeBatch é distribuído sob a [Licença MIT](LICENSE). Se ele for útil para você, considere [patrocinar o projeto](https://github.com/sponsors/jcdark) 💜

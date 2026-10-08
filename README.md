@@ -80,4 +80,6 @@ AnimeBatch stands on these tools, bundled with every release and credited in-app
 
 ---
 
-Private project — all rights reserved.
+## License & Support
+
+AnimeBatch is released under the [MIT License](LICENSE). If you find it useful, consider [sponsoring the project](https://github.com/sponsors/jcdark) 💜
