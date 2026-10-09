@@ -2,6 +2,12 @@
 
 *Read this in [Português (Brasil)](README_PTBR.md).*
 
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4%20GPU%20Fund-DB61A2?logo=githubsponsors)](https://github.com/sponsors/jcdark)
+[![Release](https://img.shields.io/github/v/release/jcdark/AnimeBatch)](https://github.com/jcdark/AnimeBatch/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+> 💜 **AnimeBatch is free and will stay free.** If it saves you time, consider [sponsoring the project](https://github.com/sponsors/jcdark) — the current goal is a **32GB+ VRAM GPU** to unlock local AI dubbing and faster AI upscaling.
+
 **AnimeBatch** is a Windows desktop app for batch anime conversion — feed it a season, and it splits episodes into chapter-aware parts, encodes each part with the bitrate it deserves, optionally upscales with AI, and merges everything into a clean MKV with proper chapters.
 
 Built with **WinUI 3 / .NET 9** (unpackaged, portable x64), backed by **SQLite**, with ~220 automated tests (unit + real integration runs against the bundled tools).

@@ -2,6 +2,12 @@
 
 *Leia isto em [English](README.md).*
 
+[![Patrocinar](https://img.shields.io/badge/Patrocinar-%E2%9D%A4%20Fundo%20GPU-DB61A2?logo=githubsponsors)](https://github.com/sponsors/jcdark)
+[![Release](https://img.shields.io/github/v/release/jcdark/AnimeBatch)](https://github.com/jcdark/AnimeBatch/releases/latest)
+[![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg)](LICENSE)
+
+> 💜 **O AnimeBatch é gratuito e vai continuar.** Se ele te economiza tempo, considere [patrocinar o projeto](https://github.com/sponsors/jcdark) — a meta atual é uma **GPU de 32 GB+ de VRAM** para destravar dublagem com IA local e acelerar o upscaling com IA.
+
 **AnimeBatch** é um app desktop Windows para conversão de animes em lote — você aponta uma temporada, e ele divide os episódios em partes por capítulo, encodeia cada parte com o bitrate que ela merece, faz upscale com IA (opcional) e une tudo num MKV limpo com capítulos.
 
 Construído com **WinUI 3 / .NET 9** (desempacotado, portátil x64), banco **SQLite** e ~220 testes automatizados (unitários + integração real contra as tools embarcadas).
