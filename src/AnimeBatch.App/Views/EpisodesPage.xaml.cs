@@ -31,6 +31,8 @@ public sealed partial class EpisodesPage : Page
     private NotifyCollectionChangedEventHandler? _calibrationChangedHandler;
     private CodecEncodeConfig? _codecCfg;
     private string? _codecCfgFor;
+    // keywords do episódio selecionado (vem da sonda) — classificação ao digitar nos modais
+    private IReadOnlyList<KeywordRule> _keywords = [];
 
     public EpisodesPage()
     {
@@ -357,6 +359,7 @@ public sealed partial class EpisodesPage : Page
 
         ep.Probed = info;
         var keywords = await AppServices.Keywords.GetAllAsync();
+        _keywords = keywords;
         var series = await AppServices.Series.FindByEpisodeAsync(ep.FileName);
         ep.Series = series;
 
@@ -922,6 +925,39 @@ public sealed partial class EpisodesPage : Page
         return series;
     }
 
+    /// <summary>Keywords do episódio selecionado; sem sonda ainda, usa as padrão — a
+    /// classificação ao digitar nos modais não pode depender de ter probeado o vídeo.</summary>
+    private IReadOnlyList<KeywordRule> KeywordsForClassify() =>
+        _keywords.Count > 0 ? _keywords : ChapterService.DefaultKeywords();
+
+    /// <summary>O kbps ajustado num capítulo vira o padrão da série (write-back): a taxa
+    /// calibrada neste episódio é o ponto de partida da próxima encode. Temporários e cena
+    /// crítica nunca escrevem; só grava quando o valor difere do cadastrado.</summary>
+    private async Task ApplySeriesKbpsWriteBackAsync(ChapterItemViewModel chapter)
+    {
+        var series = _selected?.Series;
+        if (series is null)
+            return;
+        if (SeriesKbpsSync.Compute(chapter.Class, chapter.TargetKbps, series, chapter.IsTemporary) is not { } change)
+            return;
+
+        var t = AppServices.Localizer;
+        var (label, oldValue) = chapter.Class switch
+        {
+            BitrateClass.Opening => (t.T("class.opening"), series.OpeningKbps),
+            BitrateClass.Ending => (t.T("class.ending"), series.EndingKbps),
+            _ => (t.T("class.episode"), series.EpisodeKbps),
+        };
+        if (!await AppServices.Series.UpdateKbpsAsync(series.Id, change.EpisodeKbps, change.OpeningKbps, change.EndingKbps))
+            return;
+        if (change.EpisodeKbps is { } e) series.EpisodeKbps = e;
+        if (change.OpeningKbps is { } o) series.OpeningKbps = o;
+        if (change.EndingKbps is { } n) series.EndingKbps = n;
+
+        ShowStatus(InfoBarSeverity.Success, t.T("episodes.seriesKbpsUpdated.title"),
+            t.T("episodes.seriesKbpsUpdated.msg", label, oldValue, chapter.TargetKbps));
+    }
+
     // ---------- edição de capítulos ----------
 
     /// <summary>De qual grade o item faz parte (normal ou calibragem) — os ✎/✕ das duas
@@ -1232,9 +1268,29 @@ public sealed partial class EpisodesPage : Page
             TextWrapping = TextWrapping.Wrap,
             Visibility = Visibility.Collapsed,
         };
+        var classHint = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+            Visibility = Visibility.Collapsed,
+        };
+        // classificar ao digitar (fora da Calibragem): renomear para "Abertura 2" etc.
+        // reclassifica na hora e adota o kbps padrão da série
+        if (!isCalibration)
+        {
+            title.TextChanged += (_, _) =>
+            {
+                var cls = ChapterService.Classify(title.Text, KeywordsForClassify());
+                classHint.Text = t.T("episodes.addDialog.classHint", ClassLabel(cls));
+                classHint.Visibility = cls == BitrateClass.Episode ? Visibility.Collapsed : Visibility.Visible;
+                if (cls != BitrateClass.Episode && quality is { } box)
+                    box.Value = KbpsFor(cls, _selected?.Series);
+            };
+        }
 
         var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
         panel.Children.Add(title);
+        panel.Children.Add(classHint);
         panel.Children.Add(start);
         panel.Children.Add(preset);
         if (quality is not null)
@@ -1280,6 +1336,8 @@ public sealed partial class EpisodesPage : Page
             var kbpsValue = quality is { } q && !double.IsNaN(q.Value) ? (int)q.Value : item.TargetKbps;
             var cqValue = cq is { } c && !double.IsNaN(c.Value) ? (int)c.Value : 0;
             var newTitle = string.IsNullOrWhiteSpace(title.Text) ? item.Title : title.Text.Trim();
+            // fora da Calibragem o título decide a classe — renomear p/ "Abertura" vira abertura
+            var chapterClass = isCalibration ? item.Class : ChapterService.Classify(newTitle, KeywordsForClassify());
 
             await Task.Yield(); // deixa o dialog fechar antes de mexer na coleção
 
@@ -1294,12 +1352,12 @@ public sealed partial class EpisodesPage : Page
                 Number = item.Number,
                 Title = newTitle,
                 TimeRange = $"{FormatTime(startSeconds)} → …",
-                Class = item.Class,
+                Class = chapterClass,
                 Calibration = item.Calibration,
                 TargetKbps = kbpsValue,
                 TargetLabel = item.Calibration is { } lvl
                     ? BuildLevelTargetLabel(lvl, kbpsValue, cqValue, await GetSelectedCodecConfigAsync())
-                    : BuildTargetLabel(item.Class, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
+                    : BuildTargetLabel(chapterClass, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
                 StartSeconds = startSeconds,
                 EndSeconds = duration,
                 Include = item.Include,
@@ -1324,7 +1382,11 @@ public sealed partial class EpisodesPage : Page
             if (isCalibration)
                 SaveCalibration(_selected);
             else
+            {
                 SaveChapterEdits(_selected);
+                // o kbps do capítulo vira o padrão da série (próxima encode parte daí)
+                await ApplySeriesKbpsWriteBackAsync(updated);
+            }
             // editar título/posição muda o NOME da parte — o arquivo acompanha
             await SyncPartFileNamesAsync(_selected, before, col);
         };
@@ -1374,6 +1436,21 @@ public sealed partial class EpisodesPage : Page
             : null;
         if (kbps is not null)
             kbps.Header = t.T("episodes.addDialog.kbps");
+        var classHint = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Gray),
+            Visibility = Visibility.Collapsed,
+        };
+        // classificar ao digitar: "Abertura"/"ending" etc. adotam o kbps padrão da série na hora
+        query.TextChanged += (_, _) =>
+        {
+            var cls = ChapterService.Classify(query.Text, KeywordsForClassify());
+            classHint.Text = t.T("episodes.addDialog.classHint", ClassLabel(cls));
+            classHint.Visibility = cls == BitrateClass.Episode ? Visibility.Collapsed : Visibility.Visible;
+            if (cls != BitrateClass.Episode && kbps is { } box)
+                box.Value = KbpsFor(cls, _selected?.Series);
+        };
         var temporary = new CheckBox { Content = t.T("episodes.addDialog.temporary") };
         var temporaryHint = new TextBlock
         {
@@ -1386,6 +1463,7 @@ public sealed partial class EpisodesPage : Page
 
         var panel = new StackPanel { Spacing = 10, MinWidth = 380 };
         panel.Children.Add(query);
+        panel.Children.Add(classHint);
         panel.Children.Add(start);
         panel.Children.Add(preset);
         if (kbps is not null)
@@ -1430,13 +1508,16 @@ public sealed partial class EpisodesPage : Page
             var presetValue = preset.SelectedIndex > 0 ? preset.SelectedIndex : 0;
             var kbpsValue = kbps is { } k && !double.IsNaN(k.Value) ? (int)k.Value : DefaultEpisodeKbps;
             var cqValue = cq is { } c && !double.IsNaN(c.Value) ? (int)c.Value : 0;
+            var chapterTitle = string.IsNullOrWhiteSpace(query.Text) ? t.T("episodes.newChapter") : query.Text.Trim();
+            // o título decide a classe (abertura/encerramento/etc.), igual na sonda do vídeo
+            var chapterClass = ChapterService.Classify(chapterTitle, KeywordsForClassify());
             var chapter = new ChapterItemViewModel
             {
-                Title = string.IsNullOrWhiteSpace(query.Text) ? t.T("episodes.newChapter") : query.Text.Trim(),
+                Title = chapterTitle,
                 TimeRange = $"{FormatTime(startSeconds)} → …",
-                Class = BitrateClass.Episode,
+                Class = chapterClass,
                 TargetKbps = kbpsValue,
-                TargetLabel = BuildTargetLabel(BitrateClass.Episode, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
+                TargetLabel = BuildTargetLabel(chapterClass, kbpsValue, cqValue, await GetSelectedCodecConfigAsync()),
                 StartSeconds = startSeconds,
                 EndSeconds = duration,
                 IsTemporary = temporary.IsChecked == true,
@@ -1463,6 +1544,8 @@ public sealed partial class EpisodesPage : Page
                 RecomputeChapterEnds(_selected);
                 // adicionar/editar capítulo cria a grade salva do episódio (chapters-edits)
                 SaveChapterEdits(_selected);
+                // o kbps do capítulo vira o padrão da série (próxima encode parte daí)
+                await ApplySeriesKbpsWriteBackAsync(chapter);
                 // inserir no meio RENUMERA os seguintes — as partes já encodeadas
                 // acompanham ("04 - Episode" vira "05 - Episode", e assim por diante)
                 await SyncPartFileNamesAsync(_selected, before);

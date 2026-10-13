@@ -61,6 +61,21 @@ public class SeriesRepository(Func<AnimeBatchDbContext> contextFactory)
         return affected > 0;
     }
 
+    /// <summary>Atualiza só os bitrates informados (null = campo intocado). Retorna false se a série não existir.</summary>
+    public async Task<bool> UpdateKbpsAsync(int id, int? episodeKbps = null, int? openingKbps = null, int? endingKbps = null)
+    {
+        await using var db = _factory();
+        var series = await db.Series.FirstOrDefaultAsync(s => s.Id == id).ConfigureAwait(false);
+        if (series is null)
+            return false;
+
+        if (episodeKbps is { } e) series.EpisodeKbps = e;
+        if (openingKbps is { } o) series.OpeningKbps = o;
+        if (endingKbps is { } n) series.EndingKbps = n;
+        await db.SaveChangesAsync().ConfigureAwait(false);
+        return true;
+    }
+
     /// <summary>Vincula os dados do TMDB (id, poster, sinopse) a uma série.</summary>
     public async Task<bool> UpdateTmdbAsync(int id, int tmdbId, string? posterPath, string? overview)
     {

@@ -258,6 +258,9 @@
         "calib.level.veryHigh": "Very High",
         "settings.calibrationHeader": "Automatic calibration",
         "settings.calibrationExplanation": "Automatic calibration analyzes the video (a single-pass reference encode) and measures how much bitrate each scene really consumes — from Very Low to Very High. Set here the total kbps of each level: when calibrating, the video is split into blocks by criticality and each block gets its level's bitrate. Blocks never become chapters in the final file.",
-        "settings.calibrationSave": "Save"
+        "settings.calibrationSave": "Save",
+        "episodes.addDialog.classHint": "Will be saved as: {0}",
+        "episodes.seriesKbpsUpdated.title": "Series updated",
+        "episodes.seriesKbpsUpdated.msg": "Series default: {0} {1} → {2} kbps. Upcoming episodes will use it."
     }
 }

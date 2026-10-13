@@ -66,4 +66,26 @@ public class SeriesRepositoryTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Null(loaded.CoverImageBase64);
     }
+
+    [Fact]
+    public async Task UpdateKbpsAsync_atualiza_somente_os_campos_informados()
+    {
+        var saved = await _repo.UpsertAsync(new Core.Models.Series
+        { Name = "Black Torch", EpisodeKbps = 500, OpeningKbps = 1500, EndingKbps = 500 });
+
+        // write-back do modal de capítulos: só a abertura mudou
+        Assert.True(await _repo.UpdateKbpsAsync(saved.Id, openingKbps: 1800));
+
+        var loaded = await _repo.FindByNormalizedNameAsync("black torch");
+        Assert.NotNull(loaded);
+        Assert.Equal(1800, loaded.OpeningKbps);
+        Assert.Equal(500, loaded.EpisodeKbps);
+        Assert.Equal(500, loaded.EndingKbps);
+    }
+
+    [Fact]
+    public async Task UpdateKbpsAsync_id_inexistente_retorna_false()
+    {
+        Assert.False(await _repo.UpdateKbpsAsync(9999, openingKbps: 1800));
+    }
 }
